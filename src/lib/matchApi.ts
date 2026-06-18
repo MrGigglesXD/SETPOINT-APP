@@ -40,6 +40,10 @@ export const matchApi = {
     return invoke<ActiveMatchResponse>("reset_scoreboard");
   },
 
+  generateOpponent(): Promise<ActiveMatchResponse> {
+    return invoke<ActiveMatchResponse>("generate_opponent_team");
+  },
+
   history(): Promise<MatchHistoryItem[]> {
     return invoke<MatchHistoryItem[]>("get_match_history");
   },

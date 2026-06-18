@@ -2,6 +2,7 @@ use serde::{Deserialize, Serialize};
 use sqlx::SqlitePool;
 use tauri::State;
 
+use crate::engines::NextMatchGenerator;
 use crate::error::{AppError, AppResult};
 use crate::models::{now_iso, Player};
 use crate::players::DbState;
@@ -100,7 +101,7 @@ pub async fn set_team_assignments(
     sync_queue_after_teams(pool, blue_ids, red_ids).await
 }
 
-fn balance_by_level(candidates: &[Player], team_size: i64) -> BalancedTeamsResult {
+pub fn balance_by_level(candidates: &[Player], team_size: i64) -> BalancedTeamsResult {
     let need = (team_size * 2) as usize;
     let mut sorted: Vec<&Player> = candidates.iter().take(need).collect();
     sorted.sort_by(|a, b| {
@@ -141,24 +142,9 @@ pub async fn generate_balanced_teams(
         return Err(AppError::Validation("team_size must be 4 or 6".into()));
     }
 
-    let candidates: Vec<Player> = sqlx::query_as(
-        "SELECT * FROM players WHERE status IN ('waiting', 'available')!= '' ORDER BY arrival_time ASC",
-    )
-    .fetch_all(&db.0)
-    .await?;
-
-    println!("==========================");
-    println!("POOL DEL BACKEND");
-    println!("Cantidad: {}", candidates.len());
-
-    for p in &candidates {
-        println!(
-            "{} | status={} | arrival={}",
-            p.name, p.status, p.arrival_time
-        );
-    }
-
-    println!("==========================");
+    let candidates = NextMatchGenerator::new(&db.0)
+        .next_players((team_size * 2) as usize)
+        .await?;
 
     if candidates.len() < (team_size * 2) as usize {
         return Err(AppError::Validation(format!(

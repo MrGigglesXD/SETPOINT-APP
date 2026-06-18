@@ -51,7 +51,6 @@ pub fn now_iso() -> String {
     Utc::now().to_rfc3339()
 }
 
-#[allow(dead_code)]
 pub fn parse_iso(s: &str) -> Option<DateTime<Utc>> {
     DateTime::parse_from_rfc3339(s)
         .ok()

@@ -72,6 +72,7 @@ pub fn run() {
             matches::reset_scoreboard,
             matches::finish_match,
             matches::cancel_match,
+            matches::generate_opponent_team,
             matches::get_match_history,
         ])
         .run(tauri::generate_context!())

@@ -9,12 +9,15 @@ use crate::players::DbState;
 
 #[derive(Debug, Clone, Serialize)]
 pub struct QueuePlayer {
+    pub position: i64,
     pub id: String,
     pub name: String,
     pub level: i64,
     pub arrival_time: String,
     pub wait_minutes: i64,
     pub matches_played: i64,
+    pub status: String,
+    pub next_in: bool,
 }
 
 #[tauri::command]
@@ -24,7 +27,8 @@ pub async fn get_queue(db: State<'_, DbState>) -> AppResult<Vec<QueuePlayer>> {
     let now = Utc::now();
     let queue = players
         .into_iter()
-        .map(|p| {
+        .enumerate()
+        .map(|(i, p)| {
             let wait_minutes = if p.arrival_time.is_empty() {
                 0
             } else {
@@ -34,12 +38,15 @@ pub async fn get_queue(db: State<'_, DbState>) -> AppResult<Vec<QueuePlayer>> {
                     .unwrap_or(0)
             };
             QueuePlayer {
+                position: i as i64 + 1,
                 id: p.id,
                 name: p.name,
                 level: p.level,
                 arrival_time: p.arrival_time,
                 wait_minutes,
                 matches_played: p.matches_played,
+                status: p.status,
+                next_in: i == 0,
             }
         })
         .collect();

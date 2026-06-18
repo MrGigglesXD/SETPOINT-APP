@@ -35,6 +35,7 @@ interface MatchState {
   reset: () => Promise<void>;
   finish: (winner: MatchWinner) => Promise<void>;
   cancel: () => Promise<void>;
+  generateOpponent: () => Promise<void>;
   loadHistory: () => Promise<void>;
   clearError: () => void;
   clearLastEvent: () => void;
@@ -149,6 +150,17 @@ export const useMatchStore = create<MatchState>((set) => ({
     set({ error: null });
     try {
       const resp = await matchApi.cancel();
+      applyResponse(set, resp);
+    } catch (e) {
+      set({ error: String(e) });
+      throw e;
+    }
+  },
+
+  async generateOpponent() {
+    set({ error: null });
+    try {
+      const resp = await matchApi.generateOpponent();
       applyResponse(set, resp);
     } catch (e) {
       set({ error: String(e) });

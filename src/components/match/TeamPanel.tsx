@@ -1,6 +1,7 @@
 import { Plus, X } from "lucide-react";
 import { Card, Pill, Avatar } from "@/components/ui/card";
-import { initials, levelStars, type Player } from "@/types/player";
+import { PlayerCard } from "@/components/players/PlayerCard";
+import { initials, type Player } from "@/types/player";
 
 export function TeamPanel({
   team,
@@ -51,20 +52,22 @@ export function TeamPanel({
       {available.length === 0 ? (
         <div className="text-xs text-muted py-2 text-center">Pool vacío</div>
       ) : (
-        <div className="flex flex-col gap-1 max-h-36 overflow-y-auto no-scrollbar">
+        <div className="flex flex-col gap-2 max-h-72 overflow-y-auto no-scrollbar">
           {available.map((p) => (
-            <button
+            <PlayerCard
               key={p.id}
-              onClick={() => onAssign(p.id, team)}
-              className="flex items-center gap-2.5 rounded-xl px-2.5 py-2 bg-card2 active:opacity-70 text-left"
-            >
-              <Avatar initials={initials(p.name)} className="h-7 w-7 text-[10px]" />
-              <div className="flex-1 min-w-0">
-                <div className="text-sm font-bold truncate">{p.name}</div>
-                <div className="text-[10px] text-muted">{levelStars(p.level)}</div>
-              </div>
-              <Plus size={16} className={header} />
-            </button>
+              player={p}
+              compact
+              trailing={
+                <button
+                  aria-label={`Agregar ${p.name}`}
+                  className="rounded-lg p-2 text-muted transition-colors hover:bg-card3"
+                  onClick={() => onAssign(p.id, team)}
+                >
+                  <Plus size={16} className={header} />
+                </button>
+              }
+            />
           ))}
         </div>
       )}

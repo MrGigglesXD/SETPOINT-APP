@@ -1,15 +1,18 @@
+use chrono::{Duration, Utc};
 use serde::{Deserialize, Serialize};
 use sqlx::SqlitePool;
 use tauri::State;
 use uuid::Uuid;
 
+use crate::engines::NextMatchGenerator;
 use crate::error::{AppError, AppResult};
-use crate::models::{now_iso, Player};
+use crate::models::{now_iso, parse_iso, Player};
 use crate::players::DbState;
 use crate::rotation::apply_post_match_rotation;
 use crate::teams::set_team_assignments;
 
 const ACTIVE_MATCH_KEY: &str = "active_match";
+const LAST_WINNER_SIDE_KEY: &str = "last_winner_side";
 
 // ════════════════════════════════════════════════════════
 // MODELS
@@ -677,7 +680,82 @@ pub async fn cancel_match(db: State<'_, DbState>) -> AppResult<ActiveMatchRespon
 
         set_team_assignments(&db.0, &[], &[], false).await?;
         clear_active_match(&db.0).await?;
+        delete_setting(&db.0, LAST_WINNER_SIDE_KEY).await?;
     }
+
+    build_active_response(&db.0, None).await
+}
+
+#[tauri::command]
+pub async fn generate_opponent_team(db: State<'_, DbState>) -> AppResult<ActiveMatchResponse> {
+    let active = load_active_match(&db.0)
+        .await?
+        .ok_or_else(|| AppError::Validation("no hay partido configurado".into()))?;
+
+    if active.team_size != 4 && active.team_size != 6 {
+        return Err(AppError::Validation("team_size must be 4 or 6".into()));
+    }
+
+    let last_winner_side = get_setting(&db.0, LAST_WINNER_SIDE_KEY).await?;
+    let keep_blue = match last_winner_side.as_deref() {
+        Some("blue") => true,
+        Some("red") => false,
+        _ => !active.blue_player_ids.is_empty(),
+    };
+
+    let (keeper_ids, old_opponent_ids) = if keep_blue {
+        (
+            active.blue_player_ids.clone(),
+            active.red_player_ids.clone(),
+        )
+    } else {
+        (
+            active.red_player_ids.clone(),
+            active.blue_player_ids.clone(),
+        )
+    };
+
+    if keeper_ids.is_empty() {
+        return Err(AppError::Validation(
+            "no hay equipo ganador para conservar".into(),
+        ));
+    }
+
+    move_players_to_queue_end(&db.0, &old_opponent_ids).await?;
+
+    let candidates = NextMatchGenerator::new(&db.0)
+        .next_players(active.team_size as usize)
+        .await?;
+
+    if candidates.len() < active.team_size as usize {
+        return Err(AppError::Validation(format!(
+            "se necesitan {} jugadores en cola para generar el contrincante",
+            active.team_size
+        )));
+    }
+
+    let opponent_ids: Vec<String> = candidates.into_iter().map(|p| p.id).collect();
+    let (blue_ids, red_ids) = if keep_blue {
+        (keeper_ids, opponent_ids)
+    } else {
+        (opponent_ids, keeper_ids)
+    };
+
+    set_team_assignments(&db.0, &blue_ids, &red_ids, false).await?;
+
+    let updated = ActiveMatch {
+        blue_player_ids: blue_ids,
+        red_player_ids: red_ids,
+        blue_score: 0,
+        red_score: 0,
+        blue_sets: 0,
+        red_sets: 0,
+        current_set: 1,
+        completed_sets: vec![],
+        undo_stack: vec![],
+        ..active
+    };
+    save_active_match(&db.0, &updated).await?;
 
     build_active_response(&db.0, None).await
 }
@@ -836,6 +914,7 @@ async fn finalize_match(
         active.team_size,
     )
     .await?;
+    set_setting(pool, LAST_WINNER_SIDE_KEY, winner_str).await?;
 
     let new_active = ActiveMatch {
         match_id: Uuid::new_v4().to_string(),
@@ -856,6 +935,44 @@ async fn finalize_match(
         undo_stack: vec![],
     };
     save_active_match(pool, &new_active).await?;
+
+    Ok(())
+}
+
+async fn move_players_to_queue_end(pool: &SqlitePool, player_ids: &[String]) -> AppResult<()> {
+    if player_ids.is_empty() {
+        return Ok(());
+    }
+
+    let existing_queue: Vec<Player> = sqlx::query_as(
+        "SELECT * FROM players WHERE status = 'waiting' AND arrival_time != '' ORDER BY arrival_time ASC",
+    )
+    .fetch_all(pool)
+    .await?;
+
+    let now = Utc::now();
+    let latest_queue_time = existing_queue
+        .iter()
+        .filter_map(|p| parse_iso(&p.arrival_time))
+        .max()
+        .unwrap_or(now);
+    let base = if latest_queue_time > now {
+        latest_queue_time
+    } else {
+        now
+    };
+
+    for (i, id) in player_ids.iter().enumerate() {
+        let ts = (base + Duration::seconds(i as i64 + 1)).to_rfc3339();
+        sqlx::query(
+            "UPDATE players SET status = 'waiting', arrival_time = ?, court_since = '', updated_at = ? WHERE id = ?",
+        )
+        .bind(&ts)
+        .bind(now_iso())
+        .bind(id)
+        .execute(pool)
+        .await?;
+    }
 
     Ok(())
 }

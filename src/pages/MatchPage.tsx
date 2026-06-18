@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { Play, Shuffle, X } from "lucide-react";
+import { Play, Shuffle, Swords, X } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Pill } from "@/components/ui/card";
 import { Modal } from "@/components/ui/modal";
@@ -13,7 +13,17 @@ import { teamsApi } from "@/lib/teamsApi";
 import type { MatchType, TargetScore, TeamSize } from "@/types/match";
 
 export function MatchPage({ onGoScoreboard }: { onGoScoreboard?: () => void }) {
-  const { matchData, loading, error, loadActive, setupTeams, startMatch, cancel, clearError } =
+  const {
+    matchData,
+    loading,
+    error,
+    loadActive,
+    setupTeams,
+    startMatch,
+    cancel,
+    generateOpponent,
+    clearError,
+  } =
     useMatchStore();
   const { players, loadPlayers } = usePlayersStore();
 
@@ -67,6 +77,16 @@ export function MatchPage({ onGoScoreboard }: { onGoScoreboard?: () => void }) {
       await teamsApi.generateBalanced(teamSize);
       await refresh();
       showToast("✓ Equipos balanceados");
+    } catch (e) {
+      showToast(String(e));
+    }
+  }
+
+  async function handleGenerateOpponent() {
+    try {
+      await generateOpponent();
+      await refresh();
+      showToast("✓ Equipo contrincante generado");
     } catch (e) {
       showToast(String(e));
     }
@@ -139,9 +159,14 @@ export function MatchPage({ onGoScoreboard }: { onGoScoreboard?: () => void }) {
         onTeamSizeChange={setTeamSize}
       />
 
-      <Button variant="yellow" fullWidth onClick={handleGenerate}>
-        <Shuffle size={18} /> Generar Equipos Balanceados
-      </Button>
+      <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
+        <Button variant="yellow" fullWidth onClick={handleGenerate}>
+          <Shuffle size={18} /> Generar Equipos Balanceados
+        </Button>
+        <Button variant="ghost" fullWidth onClick={handleGenerateOpponent} disabled={!matchData}>
+          <Swords size={18} /> Generar Equipo Contrincante
+        </Button>
+      </div>
 
       <TeamPanel team="blue" label="Equipo Azul" players={blueTeam} pool={pool} onAssign={handleAssign} />
       <TeamPanel team="red" label="Equipo Rojo" players={redTeam} pool={pool} onAssign={handleAssign} />

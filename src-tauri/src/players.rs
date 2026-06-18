@@ -94,28 +94,18 @@ pub async fn create_player(db: State<'_, DbState>, payload: NewPlayer) -> AppRes
 
     let id = Uuid::new_v4().to_string();
     let now = now_iso();
-    let arrival_time = if payload.mark_arrived {
-        now.clone()
-    } else {
-        "".to_string()
-    };
-    let status = if payload.mark_arrived {
-        "waiting"
-    } else {
-        "available"
-    };
+    let _future_tournament_arrival_flag = payload.mark_arrived;
 
     sqlx::query(
         r#"
         INSERT INTO players (id, name, level, elo, arrival_time, matches_played, wins, losses, status, court_since, last_match_at, created_at, updated_at)
-        VALUES (?, ?, ?, 1000, ?, 0, 0, 0, ?, '', '', ?, ?)
+        VALUES (?, ?, ?, 1000, ?, 0, 0, 0, 'waiting', '', '', ?, ?)
         "#,
     )
     .bind(&id)
     .bind(&name)
     .bind(payload.level)
-    .bind(&arrival_time)
-    .bind(status)
+    .bind(&now)
     .bind(&now)
     .bind(&now)
     .execute(&db.0)
@@ -330,7 +320,7 @@ pub async fn import_players(
     let mut added = 0i64;
     let mut skipped = 0i64;
     let mut skipped_names = Vec::new();
-    let now = now_iso();
+    let base = chrono::Utc::now();
 
     for row in rows {
         let name = match validate_name(&row.name) {
@@ -361,17 +351,20 @@ pub async fn import_players(
         }
 
         let id = Uuid::new_v4().to_string();
+        let arrival_time = (base + chrono::Duration::seconds(added)).to_rfc3339();
+        let created_at = now_iso();
         sqlx::query(
             r#"
             INSERT INTO players (id, name, level, elo, arrival_time, matches_played, wins, losses, status, court_since, last_match_at, created_at, updated_at)
-            VALUES (?, ?, ?, 1000, '', 0, 0, 0, 'available', '', '', ?, ?)
+            VALUES (?, ?, ?, 1000, ?, 0, 0, 0, 'waiting', '', '', ?, ?)
             "#,
         )
         .bind(&id)
         .bind(&name)
         .bind(level)
-        .bind(&now)
-        .bind(&now)
+        .bind(&arrival_time)
+        .bind(&created_at)
+        .bind(&created_at)
         .execute(&db.0)
         .await?;
 

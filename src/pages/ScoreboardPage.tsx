@@ -1,12 +1,11 @@
-import { useEffect, useState } from "react";
+import { useEffect } from "react";
 import { Monitor, Play } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { showToast } from "@/components/ui/toast";
 import { ScoreboardView } from "@/components/scoreboard/ScoreboardView";
-import { useMatchStore } from "@/stores/useMatchStore";
-import { usePlayersStore } from "@/stores/usePlayersStore";
+import { useScoreboardController } from "@/hooks/useScoreboardController";
 
-export function ScoreboardPage() {
+export function ScoreboardPage({ onGoTv }: { onGoTv?: () => void }) {
   const {
     matchData,
     bluePlayers,
@@ -14,6 +13,7 @@ export function ScoreboardPage() {
     lastEvent,
     error,
     loadActive,
+    loadPlayers,
     startMatch,
     score,
     undo,
@@ -21,16 +21,9 @@ export function ScoreboardPage() {
     finish,
     clearError,
     clearLastEvent,
-  } = useMatchStore();
-  const { loadPlayers } = usePlayersStore();
-  const [tick, setTick] = useState(0);
-
-  const isLive = matchData?.phase === "live";
-
-  useEffect(() => {
-    loadActive();
-    loadPlayers();
-  }, []);
+    tick,
+    isLive,
+  } = useScoreboardController();
 
   useEffect(() => {
     if (error) {
@@ -52,12 +45,6 @@ export function ScoreboardPage() {
     }
     clearLastEvent();
   }, [lastEvent]);
-
-  useEffect(() => {
-    if (!isLive) return;
-    const id = setInterval(() => setTick((t) => t + 1), 1000);
-    return () => clearInterval(id);
-  }, [isLive]);
 
   async function handleStart() {
     try {
@@ -93,10 +80,7 @@ export function ScoreboardPage() {
         <Button
           variant="ghost"
           fullWidth
-          onClick={() => {
-            window.location.hash = "marcador-solo";
-            window.location.reload();
-          }}
+          onClick={onGoTv}
         >
           <Monitor size={18} /> Modo Solo Marcador (TV)
         </Button>
@@ -113,10 +97,7 @@ export function ScoreboardPage() {
         <Button
           variant="ghost"
           size="sm"
-          onClick={() => {
-            window.location.hash = "marcador-solo";
-            window.location.reload();
-          }}
+          onClick={onGoTv}
         >
           <Monitor size={14} /> TV
         </Button>

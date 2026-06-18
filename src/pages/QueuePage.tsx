@@ -1,10 +1,20 @@
 import { useEffect, useState } from "react";
-import { RefreshCw, Hourglass } from "lucide-react";
+import { RefreshCw, Hourglass, LogIn } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Card, Avatar } from "@/components/ui/card";
 import { showToast } from "@/components/ui/toast";
 import { queueApi, type QueuePlayer } from "@/lib/queueApi";
 import { initials, levelStars } from "@/types/player";
+
+function statusLabel(status: string): string {
+  return {
+    waiting: "En cola",
+    available: "Disponible",
+    blue: "Azul",
+    red: "Rojo",
+    absent: "Ausente",
+  }[status] ?? status;
+}
 
 export function QueuePage() {
   const [queue, setQueue] = useState<QueuePlayer[]>([]);
@@ -66,12 +76,22 @@ export function QueuePage() {
         <div className="flex flex-col gap-2">
           {queue.map((p, i) => (
             <Card key={p.id} className="flex items-center gap-3">
-              <div className="text-lg font-black text-setpoint-yellow w-6 text-center">{i + 1}</div>
+              <div className="text-lg font-black text-setpoint-yellow w-7 text-center">
+                {p.position || i + 1}
+              </div>
               <Avatar initials={initials(p.name)} />
               <div className="flex-1 min-w-0">
-                <div className="text-sm font-bold truncate">{p.name}</div>
-                <div className="text-[11px] text-muted">
-                  {levelStars(p.level)} · {p.wait_minutes}m esperando
+                <div className="flex items-center gap-2">
+                  <div className="text-sm font-bold truncate">{p.name}</div>
+                  {p.next_in && (
+                    <span className="inline-flex items-center gap-1 rounded-md bg-setpoint-yellow px-1.5 py-0.5 text-[10px] font-black text-[#1a1a00]">
+                      <LogIn size={11} /> Siguiente
+                    </span>
+                  )}
+                </div>
+                <div className="text-[11px] text-muted leading-relaxed">
+                  Nivel {p.level} {levelStars(p.level)} · {p.wait_minutes}m esperando ·{" "}
+                  {statusLabel(p.status)}
                 </div>
               </div>
             </Card>

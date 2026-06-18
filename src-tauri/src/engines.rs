@@ -1,6 +1,4 @@
-//! Stable orchestration boundaries for the next queue/rotation sprint.
-//! Sprint 1 only routes existing behavior through these managers; match generation
-//! remains intentionally inactive until its rules are defined.
+//! Stable orchestration boundaries for queue, balancing, and rotation.
 
 use sqlx::SqlitePool;
 
@@ -50,8 +48,11 @@ impl<'a> NextMatchGenerator<'a> {
         }
     }
 
-    /// Candidate collection only. Team/rotation policy is deferred to Sprint 2.
     pub async fn candidates(&self) -> AppResult<Vec<Player>> {
         self.queue.waiting_players().await
+    }
+
+    pub async fn next_players(&self, count: usize) -> AppResult<Vec<Player>> {
+        Ok(self.candidates().await?.into_iter().take(count).collect())
     }
 }
