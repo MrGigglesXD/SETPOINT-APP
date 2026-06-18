@@ -1,0 +1,14 @@
+node_modules
+dist
+dist-ssr
+*.local
+
+# Rust
+src-tauri/target
+
+# Tauri generated
+src-tauri/gen
+
+# OS
+.DS_Store
+*.log

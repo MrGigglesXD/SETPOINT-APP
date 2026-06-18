@@ -1,0 +1,2 @@
+ALTER TABLE players ADD COLUMN court_since TEXT NOT NULL DEFAULT '';
+ALTER TABLE players ADD COLUMN last_match_at TEXT NOT NULL DEFAULT '';
