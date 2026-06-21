@@ -18,17 +18,122 @@ fn validate_level(level: i64) -> AppResult<()> {
     Ok(())
 }
 
+/// Reserved words that should never become player names.
+/// These are common headers, table columns, and metadata keywords.
+fn is_reserved_word(name: &str) -> bool {
+    let normalized = name
+        .to_lowercase()
+        .chars()
+        .filter(|c| c.is_alphabetic())
+        .collect::<String>();
+    
+    matches!(
+        normalized.as_str(),
+        "name" | "names" | "player" | "players" | "id" | "level" | "position"
+            | "posición" | "nombre" | "nombres" | "jugador" | "jugadores"
+            | "nivel" | "nro" | "no" | "col" | "row"
+    )
+}
+
+/// Sanitize a player name by removing formatting, table markers, bullets, etc.
+/// 
+/// Performs:
+/// 1. Trim whitespace
+/// 2. Remove table pipes (|)
+/// 3. Remove Markdown formatting (*, _, etc.)
+/// 4. Remove bullet markers (-, *, +)
+/// 5. Remove numbered list prefixes (1., 2), 3-, etc.)
+/// 6. Collapse multiple spaces
+/// 7. Trim again
+fn sanitize_name(raw: &str) -> String {
+    let mut cleaned = raw.trim().to_string();
+
+    // Remove table pipes
+    cleaned = cleaned.replace('|', " ");
+
+    // Remove Markdown bold/italic: **, __, *, _
+    cleaned = cleaned.replace(['*', '_'], "").replace("**", "").replace("__", "");
+
+    // Remove bullet markers at the start: -, *, +, followed by space
+    if cleaned.starts_with("- ") || cleaned.starts_with("* ") || cleaned.starts_with("+ ") {
+        cleaned = cleaned[2..].trim().to_string();
+    }
+
+    // Remove numbered list prefixes: "1.", "2)", "3-", "10.", etc.
+    // Pattern: one or more digits followed by . ) - : and optional space
+    let mut skip_chars = 0;
+    let mut chars_iter = cleaned.chars().peekable();
+    let mut digit_count = 0;
+
+    // Count leading digits
+    while let Some(&c) = chars_iter.peek() {
+        if c.is_ascii_digit() {
+            digit_count += 1;
+            chars_iter.next();
+        } else {
+            break;
+        }
+    }
+
+    // If we found digits, check for separator
+    if digit_count > 0 {
+        if let Some(&c) = chars_iter.peek() {
+            if matches!(c, '.' | ')' | '-' | ':') {
+                skip_chars = digit_count + 1;
+                chars_iter.next();
+                // Skip optional space after separator
+                if let Some(&' ') = chars_iter.peek() {
+                    skip_chars += 1;
+                }
+            }
+        }
+    }
+
+    if skip_chars > 0 {
+        cleaned = cleaned[skip_chars..].trim().to_string();
+    }
+
+    // Collapse multiple spaces into one
+    while cleaned.contains("  ") {
+        cleaned = cleaned.replace("  ", " ");
+    }
+
+    // Trim again
+    cleaned.trim().to_string()
+}
+
 fn validate_name(name: &str) -> AppResult<String> {
-    let trimmed = name.trim();
-    if trimmed.is_empty() {
+    let cleaned = sanitize_name(name);
+
+    // Empty after sanitization
+    if cleaned.is_empty() {
         return Err(AppError::Validation("name cannot be empty".into()));
     }
-    if trimmed.len() > 40 {
+
+    // Too long
+    if cleaned.len() > 40 {
         return Err(AppError::Validation(
             "name is too long (max 40 chars)".into(),
         ));
     }
-    Ok(trimmed.to_string())
+
+    // Reserved word
+    if is_reserved_word(&cleaned) {
+        return Err(AppError::Validation(format!(
+            "\"{}\" is a reserved word and cannot be used as a player name",
+            cleaned
+        )));
+    }
+
+    // Must contain at least 2 letters to be a plausible human name
+    let letter_count = cleaned.chars().filter(|c| c.is_alphabetic()).count();
+    if letter_count < 2 {
+        return Err(AppError::Validation(
+            "name must contain at least 2 letters".into(),
+        ));
+    }
+
+    Ok(cleaned)
 }
 
 // ════════════════════════════════════════════════════════

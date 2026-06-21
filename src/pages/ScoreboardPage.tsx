@@ -1,17 +1,33 @@
 import { useEffect } from "react";
-import { Monitor, Play } from "lucide-react";
+import { Monitor, Play, History, Home, RotateCw } from "lucide-react";
 import { Button } from "@/components/ui/button";
+import { Card, Pill } from "@/components/ui/card";
 import { showToast } from "@/components/ui/toast";
 import { ScoreboardView } from "@/components/scoreboard/ScoreboardView";
 import { useScoreboardController } from "@/hooks/useScoreboardController";
+import { formatDuration } from "@/types/match";
 
-export function ScoreboardPage({ onGoTv }: { onGoTv?: () => void }) {
+export function ScoreboardPage({
+  onGoTv,
+  onNoActive,
+  onGoMatch,
+  onGoHistory,
+}: {
+  onGoTv?: () => void;
+  onNoActive?: () => void;
+  onGoMatch?: () => void;
+  onGoHistory?: () => void;
+}) {
   const {
     matchData,
     bluePlayers,
     redPlayers,
     lastEvent,
+    matchResult,
+    resultBluePlayers,
+    resultRedPlayers,
     error,
+    loading,
     loadActive,
     loadPlayers,
     startMatch,
@@ -19,8 +35,10 @@ export function ScoreboardPage({ onGoTv }: { onGoTv?: () => void }) {
     undo,
     reset,
     finish,
+    nextMatch,
     clearError,
     clearLastEvent,
+    clearResult,
     tick,
     isLive,
   } = useScoreboardController();
@@ -30,7 +48,7 @@ export function ScoreboardPage({ onGoTv }: { onGoTv?: () => void }) {
       showToast(error);
       clearError();
     }
-  }, [error]);
+  }, [error, clearError]);
 
   useEffect(() => {
     if (!lastEvent) return;
@@ -39,12 +57,18 @@ export function ScoreboardPage({ onGoTv }: { onGoTv?: () => void }) {
       showToast(`Set ${lastEvent.set_number}: ${lastEvent.blue_score}-${lastEvent.red_score} · ${t}`);
     } else {
       const t = lastEvent.winner === "blue" ? "Azul" : "Rojo";
-      showToast(`✓ Gana ${t} — equipos rotados`);
+      showToast(`✓ Gana ${t}`);
       loadPlayers();
       loadActive();
     }
     clearLastEvent();
-  }, [lastEvent]);
+  }, [lastEvent, loadPlayers, loadActive, clearLastEvent]);
+
+  useEffect(() => {
+    if (!loading && !matchData && !matchResult) {
+      onNoActive?.();
+    }
+  }, [matchData, matchResult, loading, onNoActive]);
 
   async function handleStart() {
     try {
@@ -54,6 +78,91 @@ export function ScoreboardPage({ onGoTv }: { onGoTv?: () => void }) {
     } catch {
       // toast
     }
+  }
+
+  async function handleNextMatch() {
+    try {
+      await nextMatch();
+      showToast("✓ Equipos preparados");
+    } catch {
+      // toast
+    }
+  }
+
+  // Match result screen
+  if (matchResult && resultBluePlayers.length > 0 && resultRedPlayers.length > 0) {
+    const winnerTeam = matchResult.winner === "blue" ? "Azul" : "Rojo";
+    const loserTeam = matchResult.winner === "blue" ? "Rojo" : "Azul";
+    const winnerPlayers = matchResult.winner === "blue" ? resultBluePlayers : resultRedPlayers;
+    return (
+      <div className="flex flex-col gap-4 p-4">
+        <h1 className="text-xl font-extrabold text-center">🏆 Partido Finalizado</h1>
+        
+        <Card className="flex flex-col gap-4 p-6 text-center">
+          <div className="text-3xl font-black text-setpoint-yellow">Gana {winnerTeam}</div>
+          
+          <div className="flex items-center justify-center gap-4">
+            <div className="flex flex-col items-center">
+              <span className="text-xs text-muted">Azul</span>
+              <span className="text-2xl font-bold">{matchResult.blue_score}</span>
+            </div>
+            <span className="text-muted">vs</span>
+            <div className="flex flex-col items-center">
+              <span className="text-xs text-muted">Rojo</span>
+              <span className="text-2xl font-bold">{matchResult.red_score}</span>
+            </div>
+          </div>
+
+          {matchResult.match_type !== "exhibition" && (
+            <div className="text-xs text-muted">
+              Sets {matchResult.blue_sets}–{matchResult.red_sets}
+            </div>
+          )}
+          
+          <div className="text-xs text-muted">
+            ⏱ {formatDuration(matchResult.duration_secs)}
+          </div>
+
+          <div className="text-xs">
+            <span className="font-semibold">{winnerTeam}:</span> {winnerPlayers.map(p => p.name).join(", ")}
+          </div>
+        </Card>
+
+        <div className="grid grid-cols-2 gap-2">
+          <Button 
+            variant="yellow"
+            onClick={handleNextMatch}
+            disabled={loading}
+          >
+            <RotateCw size={16} /> Siguiente
+          </Button>
+          <Button 
+            variant="ghost"
+            onClick={() => {
+              clearResult();
+              onGoMatch?.();
+            }}
+          >
+            ✏ Editar
+          </Button>
+          <Button 
+            variant="ghost"
+            onClick={onGoHistory}
+          >
+            <History size={16} /> Historial
+          </Button>
+          <Button 
+            variant="ghost"
+            onClick={() => {
+              clearResult();
+              onNoActive?.();
+            }}
+          >
+            <Home size={16} /> Inicio
+          </Button>
+        </div>
+      </div>
+    );
   }
 
   if (!matchData) {

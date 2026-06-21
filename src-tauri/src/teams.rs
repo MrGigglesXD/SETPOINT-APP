@@ -103,34 +103,53 @@ pub async fn set_team_assignments(
 
 pub fn balance_by_level(candidates: &[Player], team_size: i64) -> BalancedTeamsResult {
     let need = (team_size * 2) as usize;
-    let mut sorted: Vec<&Player> = candidates.iter().take(need).collect();
-    sorted.sort_by(|a, b| {
-        b.level
-            .cmp(&a.level)
-            .then_with(|| a.arrival_time.cmp(&b.arrival_time))
-    });
+    let pool: Vec<&Player> = candidates.iter().take(need).collect();
+
+    // If there are not many candidates, fall back to greedy algorithm
+    if pool.len() <= 1 {
+        return BalancedTeamsResult {
+            blue_player_ids: pool.iter().take(team_size as usize).map(|p| p.id.clone()).collect(),
+            red_player_ids: pool.iter().skip(team_size as usize).map(|p| p.id.clone()).collect(),
+        };
+    }
+
+    let total: i64 = pool.iter().map(|p| p.level).sum();
+    let n = pool.len();
+
+    // Exhaustive search over subsets (n <= 12 in normal usage) to find the team_size subset
+    // whose sum is closest to total/2. This gives a near-optimal balance for small N.
+    let mut best_mask: usize = 0;
+    let mut best_diff: i64 = i64::MAX;
+
+    let limit = 1usize << n;
+    for mask in 0..limit {
+        if mask.count_ones() as usize != team_size as usize {
+            continue;
+        }
+        let mut sum = 0i64;
+        for (i, p) in pool.iter().enumerate() {
+            if (mask & (1 << i)) != 0 {
+                sum += p.level;
+            }
+        }
+        let diff = (total - 2 * sum).abs();
+        if diff < best_diff {
+            best_diff = diff;
+            best_mask = mask;
+        }
+    }
 
     let mut blue: Vec<String> = Vec::new();
     let mut red: Vec<String> = Vec::new();
-    let mut blue_sum = 0i64;
-    let mut red_sum = 0i64;
-
-    for p in sorted {
-        if blue.len() < team_size as usize
-            && (red.len() >= team_size as usize || blue_sum <= red_sum)
-        {
-            blue_sum += p.level;
+    for (i, p) in pool.iter().enumerate() {
+        if (best_mask & (1 << i)) != 0 {
             blue.push(p.id.clone());
-        } else if red.len() < team_size as usize {
-            red_sum += p.level;
+        } else {
             red.push(p.id.clone());
         }
     }
 
-    BalancedTeamsResult {
-        blue_player_ids: blue,
-        red_player_ids: red,
-    }
+    BalancedTeamsResult { blue_player_ids: blue, red_player_ids: red }
 }
 
 #[tauri::command]

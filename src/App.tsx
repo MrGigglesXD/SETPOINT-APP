@@ -46,8 +46,17 @@ export default function App() {
       <div className="flex-1 overflow-y-auto no-scrollbar pb-24">
         {tab === "players" && <PlayersPage />}
         {tab === "match" && <MatchPage onGoScoreboard={() => setTab("scoreboard")} />}
-        {tab === "scoreboard" && <ScoreboardPage onGoTv={openTvMode} />}
+        {tab === "scoreboard" && (
+          <ScoreboardPage
+            onGoTv={openTvMode}
+            onNoActive={() => setTab("match")}
+            onGoMatch={() => setTab("match")}
+            onGoHistory={() => setTab("history")}
+          />
+        )}
         {tab === "queue" && <QueuePage />}
+        {tab === "stats" && <StatsPage />}
+        {tab === "history" && <HistoryPage />}
         {tab === "stats" && <StatsPage />}
         {tab === "history" && <HistoryPage />}
       </div>

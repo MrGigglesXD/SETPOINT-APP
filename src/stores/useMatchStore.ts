@@ -4,6 +4,7 @@ import type {
   ActiveMatchResponse,
   MatchEvent,
   MatchHistoryItem,
+  MatchResult,
   MatchType,
   MatchWinner,
   ScoreAction,
@@ -24,6 +25,9 @@ interface MatchState {
   redPlayers: Player[];
   history: MatchHistoryItem[];
   lastEvent: MatchEvent | null;
+  matchResult: MatchResult | null;
+  resultBluePlayers: Player[];
+  resultRedPlayers: Player[];
   loading: boolean;
   error: string | null;
 
@@ -34,9 +38,11 @@ interface MatchState {
   undo: () => Promise<void>;
   reset: () => Promise<void>;
   finish: (winner: MatchWinner) => Promise<void>;
+  nextMatch: () => Promise<void>;
   cancel: () => Promise<void>;
   generateOpponent: () => Promise<void>;
   loadHistory: () => Promise<void>;
+  clearResult: () => void;
   clearError: () => void;
   clearLastEvent: () => void;
 }
@@ -51,13 +57,16 @@ function applyResponse(set: (partial: Partial<MatchState>) => void, resp: Active
   });
 }
 
-export const useMatchStore = create<MatchState>((set) => ({
+export const useMatchStore = create<MatchState>((set, get) => ({
   active: false,
   matchData: null,
   bluePlayers: [],
   redPlayers: [],
   history: [],
   lastEvent: null,
+  matchResult: null,
+  resultBluePlayers: [],
+  resultRedPlayers: [],
   loading: false,
   error: null,
 
@@ -73,7 +82,7 @@ export const useMatchStore = create<MatchState>((set) => ({
   },
 
   async setupTeams(blueIds, redIds, format) {
-    set({ error: null });
+    set({ error: null, matchResult: null });
     try {
       const resp = await matchApi.setupTeams({
         blue_player_ids: blueIds,
@@ -91,7 +100,7 @@ export const useMatchStore = create<MatchState>((set) => ({
   },
 
   async startMatch() {
-    set({ error: null });
+    set({ error: null, matchResult: null });
     try {
       const resp = await matchApi.start();
       applyResponse(set, resp);
@@ -139,6 +148,25 @@ export const useMatchStore = create<MatchState>((set) => ({
     set({ error: null });
     try {
       const resp = await matchApi.finish(winner);
+      const state = get();
+      const winnerTeam = winner === "blue" ? "blue" : "red";
+      const loserTeam = winner === "blue" ? "red" : "blue";
+      const matchResult: MatchResult = {
+        winner: winnerTeam,
+        loser: loserTeam,
+        blue_score: state.matchData?.blue_score ?? 0,
+        red_score: state.matchData?.red_score ?? 0,
+        blue_sets: state.matchData?.blue_sets ?? 0,
+        red_sets: state.matchData?.red_sets ?? 0,
+        match_type: state.matchData?.match_type ?? "exhibition",
+        duration_secs: state.matchData?.started_at ? Math.floor((Date.now() - new Date(state.matchData.started_at).getTime()) / 1000) : 0,
+        completed_sets: state.matchData?.completed_sets ?? [],
+      };
+      set({
+        matchResult,
+        resultBluePlayers: state.bluePlayers,
+        resultRedPlayers: state.redPlayers,
+      });
       applyResponse(set, resp);
     } catch (e) {
       set({ error: String(e) });
@@ -146,8 +174,20 @@ export const useMatchStore = create<MatchState>((set) => ({
     }
   },
 
-  async cancel() {
+  async nextMatch() {
     set({ error: null });
+    try {
+      const resp = await matchApi.generateOpponent();
+      applyResponse(set, resp);
+      set({ matchResult: null, resultBluePlayers: [], resultRedPlayers: [] });
+    } catch (e) {
+      set({ error: String(e) });
+      throw e;
+    }
+  },
+
+  async cancel() {
+    set({ error: null, matchResult: null, resultBluePlayers: [], resultRedPlayers: [] });
     try {
       const resp = await matchApi.cancel();
       applyResponse(set, resp);
@@ -176,6 +216,10 @@ export const useMatchStore = create<MatchState>((set) => ({
     } catch (e) {
       set({ error: String(e), loading: false });
     }
+  },
+
+  clearResult() {
+    set({ matchResult: null, resultBluePlayers: [], resultRedPlayers: [] });
   },
 
   clearError() {

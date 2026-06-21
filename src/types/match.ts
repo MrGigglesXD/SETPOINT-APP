@@ -55,6 +55,18 @@ export type MatchEvent =
       winner: string;
     };
 
+export interface MatchResult {
+  winner: "blue" | "red";
+  loser: "blue" | "red";
+  blue_score: number;
+  red_score: number;
+  blue_sets: number;
+  red_sets: number;
+  match_type: MatchType;
+  duration_secs: number;
+  completed_sets: SetScore[];
+}
+
 export interface ActiveMatchResponse {
   active: boolean;
   match_data?: ActiveMatch;

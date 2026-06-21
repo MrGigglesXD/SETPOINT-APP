@@ -10,6 +10,7 @@ import type {
   BackupImportMode,
   BackupImportResult,
 } from "@/types/player";
+import { parseImportText as parseImportTextSanitized } from "@/lib/playerImportSanitizer";
 
 // ════════════════════════════════════════════════════════
 // Players API - thin typed layer over Tauri commands
@@ -75,26 +76,24 @@ export const playersApi = {
 
 /**
  * Parses pasted text in "Name Level" format (one player per line).
- * Level is optional and defaults to 3. Examples:
- *   "Andres 4"
- *   "Ana 2"
- *   "Miguel" -> level 3
+ * 
+ * This is a robust parser that handles:
+ * - Plain text lists: "Name Level"
+ * - Markdown tables: "| Name | Level |"
+ * - Bullet lists: "- Name Level"
+ * - Numbered lists: "1. Name Level"
+ * - Mixed formatting from copy/paste (Markdown, Excel, Notion, WhatsApp)
+ * 
+ * Automatically filters:
+ * - Markdown headers (#, ##, ###)
+ * - Markdown tables (| ... |)
+ * - Separator lines (---, ===, etc.)
+ * - Reserved words (Name, Player, Nombre, Jugador, etc.)
+ * - Empty lines and whitespace
+ * 
+ * Level is optional (1-5) and defaults to 3.
+ * Names with accents and hyphens are supported (José, Maria-José, etc.).
  */
 export function parseImportText(raw: string): ImportPlayerRow[] {
-  return raw
-    .split("\n")
-    .map((line) => line.trim())
-    .filter((line) => line.length > 0)
-    .map((line) => {
-      const parts = line.split(/\s+/);
-      const last = parts[parts.length - 1];
-      if (/^[1-5]$/.test(last) && parts.length > 1) {
-        return {
-          name: parts.slice(0, -1).join(" "),
-          level: parseInt(last, 10),
-        };
-      }
-      return { name: parts.join(" "), level: 3 };
-    })
-    .filter((row) => row.name.length > 0);
+  return parseImportTextSanitized(raw);
 }

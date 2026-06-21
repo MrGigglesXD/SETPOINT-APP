@@ -1,6 +1,7 @@
 use chrono::{Duration, Utc};
 use serde::{Deserialize, Serialize};
 use sqlx::SqlitePool;
+use std::collections::HashSet;
 use tauri::State;
 use uuid::Uuid;
 
@@ -225,8 +226,20 @@ async fn load_active_match(pool: &SqlitePool) -> AppResult<Option<ActiveMatch>> 
     if raw.is_empty() {
         return Ok(None);
     }
-    let parsed: ActiveMatch = serde_json::from_str(&raw)?;
-    Ok(Some(parsed))
+
+    match serde_json::from_str::<ActiveMatch>(&raw) {
+        Ok(active) => {
+            if validate_active_match(&active).is_err() {
+                clear_active_match(pool).await?;
+                return Ok(None);
+            }
+            Ok(Some(active))
+        }
+        Err(_) => {
+            clear_active_match(pool).await?;
+            Ok(None)
+        }
+    }
 }
 
 async fn save_active_match(pool: &SqlitePool, active: &ActiveMatch) -> AppResult<()> {
@@ -265,15 +278,35 @@ fn validate_team_setup(blue_ids: &[String], red_ids: &[String]) -> AppResult<()>
             "red team must have at least one player".into(),
         ));
     }
-    let blue_set: std::collections::HashSet<_> = blue_ids.iter().collect();
-    for id in red_ids {
-        if blue_set.contains(id) {
+
+    let mut combined = HashSet::new();
+    for id in blue_ids.iter().chain(red_ids.iter()) {
+        if !combined.insert(id) {
             return Err(AppError::Validation(
-                "a player cannot be on both teams".into(),
+                "duplicate player ids are not allowed in team selection".into(),
             ));
         }
     }
+
     Ok(())
+}
+
+fn validate_team_size(blue_ids: &[String], red_ids: &[String], team_size: i64) -> AppResult<()> {
+    if blue_ids.len() != team_size as usize || red_ids.len() != team_size as usize {
+        return Err(AppError::Validation(format!(
+            "each team must contain exactly {} players",
+            team_size
+        )));
+    }
+    Ok(())
+}
+
+fn validate_active_match(active: &ActiveMatch) -> AppResult<()> {
+    if active.team_size != 4 && active.team_size != 6 {
+        return Err(AppError::Validation("invalid active match team size".into()));
+    }
+    validate_team_size(&active.blue_player_ids, &active.red_player_ids, active.team_size)?;
+    validate_team_setup(&active.blue_player_ids, &active.red_player_ids)
 }
 
 fn validate_format(match_type: &MatchType, target_score: i64) -> AppResult<()> {
@@ -371,8 +404,47 @@ async fn build_active_response(
             event,
         }),
         Some(m) => {
-            let blue_players = fetch_players_by_ids(pool, &m.blue_player_ids).await?;
-            let red_players = fetch_players_by_ids(pool, &m.red_player_ids).await?;
+            if validate_active_match(&m).is_err() {
+                clear_active_match(pool).await?;
+                return Ok(ActiveMatchResponse {
+                    active: false,
+                    match_data: None,
+                    blue_players: vec![],
+                    red_players: vec![],
+                    event,
+                });
+            }
+
+            let blue_players = match fetch_players_by_ids(pool, &m.blue_player_ids).await {
+                Ok(players) => players,
+                Err(AppError::NotFound(_)) => {
+                    clear_active_match(pool).await?;
+                    return Ok(ActiveMatchResponse {
+                        active: false,
+                        match_data: None,
+                        blue_players: vec![],
+                        red_players: vec![],
+                        event,
+                    });
+                }
+                Err(err) => return Err(err),
+            };
+
+            let red_players = match fetch_players_by_ids(pool, &m.red_player_ids).await {
+                Ok(players) => players,
+                Err(AppError::NotFound(_)) => {
+                    clear_active_match(pool).await?;
+                    return Ok(ActiveMatchResponse {
+                        active: false,
+                        match_data: None,
+                        blue_players: vec![],
+                        red_players: vec![],
+                        event,
+                    });
+                }
+                Err(err) => return Err(err),
+            };
+
             Ok(ActiveMatchResponse {
                 active: true,
                 match_data: Some(m),
@@ -398,6 +470,7 @@ pub async fn setup_match_teams(
     db: State<'_, DbState>,
     payload: SetupTeamsPayload,
 ) -> AppResult<ActiveMatchResponse> {
+    validate_team_size(&payload.blue_player_ids, &payload.red_player_ids, payload.team_size)?;
     validate_team_setup(&payload.blue_player_ids, &payload.red_player_ids)?;
     validate_format(&payload.match_type, payload.target_score)?;
     if payload.team_size != 4 && payload.team_size != 6 {
@@ -450,10 +523,11 @@ pub async fn start_match(db: State<'_, DbState>) -> AppResult<ActiveMatchRespons
         .await?
         .ok_or_else(|| AppError::Validation("no match setup — select teams first".into()))?;
 
-    if matches!(active.phase, MatchPhase::Live) {
-        return Err(AppError::Validation("match is already live".into()));
+    if !matches!(active.phase, MatchPhase::Setup) {
+        return Err(AppError::Validation("match must be in setup phase before starting".into()));
     }
 
+    validate_team_size(&active.blue_player_ids, &active.red_player_ids, active.team_size)?;
     validate_team_setup(&active.blue_player_ids, &active.red_player_ids)?;
     validate_format(&active.match_type, active.target_score)?;
 
@@ -471,6 +545,9 @@ pub async fn start_match(db: State<'_, DbState>) -> AppResult<ActiveMatchRespons
     let match_type_db = match_type_str(&active.match_type);
     let points_to_win = set_target(&active);
 
+    // Insert or update existing match row for this match id to avoid UNIQUE constraint
+    // errors when a setup already created a row previously. If a row with the same id
+    // already exists we update the relevant columns instead of inserting a duplicate.
     sqlx::query(
         r#"
         INSERT INTO matches (
@@ -479,6 +556,13 @@ pub async fn start_match(db: State<'_, DbState>) -> AppResult<ActiveMatchRespons
             started_at, finished_at, created_at
         )
         VALUES (?, ?, NULL, 0, 0, 0, 0, '[]', ?, ?, 1, 0, 0, ?, '', ?)
+        ON CONFLICT(id) DO UPDATE SET
+            date = excluded.date,
+            points_to_win = excluded.points_to_win,
+            match_type = excluded.match_type,
+            win_by_two = excluded.win_by_two,
+            started_at = excluded.started_at,
+            created_at = excluded.created_at
         "#,
     )
     .bind(&active.match_id)
@@ -654,16 +738,10 @@ pub async fn finish_match(
     };
 
     finalize_match(&db.0, &active, winner_str).await?;
-
-    Ok(ActiveMatchResponse {
-        active: false,
-        match_data: None,
-        blue_players: vec![],
-        red_players: vec![],
-        event: Some(MatchEvent::MatchCompleted {
-            winner: winner_str.to_string(),
-        }),
-    })
+    build_active_response(&db.0, Some(MatchEvent::MatchCompleted {
+        winner: winner_str.to_string(),
+    }))
+    .await
 }
 
 #[tauri::command]
@@ -867,12 +945,16 @@ async fn finalize_match(
     let sets_json = serde_json::to_string(&all_sets)?;
     let match_type_db = match_type_str(&active.match_type);
 
+    // Persist match result and player rows inside a DB transaction to avoid partial
+    // updates leaving the DB in an inconsistent state.
+    let mut tx = pool.begin().await?;
+
     sqlx::query(
         r#"
         UPDATE matches
         SET winner = ?, blue_score = ?, red_score = ?, blue_sets = ?, red_sets = ?,
             sets_json = ?, duration_secs = ?, finished = 1, finished_at = ?,
-            match_type = ?, win_by_two = 1, points_to_win = ?
+            match_type = ?, win_by_two = ?, points_to_win = ?
         WHERE id = ?
         "#,
     )
@@ -885,58 +967,112 @@ async fn finalize_match(
     .bind(duration_secs)
     .bind(&now)
     .bind(match_type_db)
+    .bind(if active.win_by_two { 1 } else { 0 })
     .bind(active.target_score)
     .bind(&active.match_id)
-    .execute(pool)
+    .execute(&mut *tx)
     .await?;
 
-    let blue_players = fetch_players_by_ids(pool, &active.blue_player_ids).await?;
-    let red_players = fetch_players_by_ids(pool, &active.red_player_ids).await?;
+    // Fetch players involved via the transaction and insert match_players + update stats
+    let mut participants: Vec<Player> = Vec::new();
+    for id in active.blue_player_ids.iter().chain(active.red_player_ids.iter()) {
+        if let Some(p) = sqlx::query_as::<_, Player>("SELECT * FROM players WHERE id = ?")
+            .bind(id)
+            .fetch_optional(&mut *tx)
+            .await?
+        {
+            participants.push(p);
+        }
+    }
 
-    for player in blue_players.iter().chain(red_players.iter()) {
+    for player in participants.iter() {
         let won = (winner_str == "blue" && active.blue_player_ids.contains(&player.id))
             || (winner_str == "red" && active.red_player_ids.contains(&player.id));
         let result = if won { "win" } else { "loss" };
-        let team = if active.blue_player_ids.contains(&player.id) {
-            "blue"
+        let team = if active.blue_player_ids.contains(&player.id) { "blue" } else { "red" };
+
+        let mp_id = Uuid::new_v4().to_string();
+        sqlx::query(
+            r#"INSERT INTO match_players (id, match_id, player_id, team, player_name, elo_before, elo_after, result) VALUES (?, ?, ?, ?, ?, ?, ?, ?)"#,
+        )
+        .bind(mp_id)
+        .bind(&active.match_id)
+        .bind(&player.id)
+        .bind(team)
+        .bind(&player.name)
+        .bind(player.elo)
+        .bind(player.elo)
+        .bind(result)
+        .execute(&mut *tx)
+        .await?;
+
+        if won {
+            sqlx::query(
+                "UPDATE players SET matches_played = matches_played + 1, wins = wins + 1, last_match_at = ?, updated_at = ? WHERE id = ?",
+            )
+            .bind(&now)
+            .bind(&now)
+            .bind(&player.id)
+            .execute(&mut *tx)
+            .await?;
         } else {
-            "red"
-        };
-        insert_match_player(pool, &active.match_id, player, team, result).await?;
-        update_player_stats(pool, &player.id, won, &now).await?;
+            sqlx::query(
+                "UPDATE players SET matches_played = matches_played + 1, losses = losses + 1, last_match_at = ?, updated_at = ? WHERE id = ?",
+            )
+            .bind(&now)
+            .bind(&now)
+            .bind(&player.id)
+            .execute(&mut *tx)
+            .await?;
+        }
     }
 
-    let rotated = apply_post_match_rotation(
+    tx.commit().await?;
+
+    // Rotation and settings updates happen after commit to avoid locking long-running
+    // operations inside the DB transaction. If rotation cannot create the next opponent
+    // team because there are not enough queued players, we still keep the finished match
+    // result and clear the active match so the app can recover gracefully.
+    let rotation_result = apply_post_match_rotation(
         pool,
         winner_str,
         &active.blue_player_ids,
         &active.red_player_ids,
         active.team_size,
     )
-    .await?;
+    .await;
+
     set_setting(pool, LAST_WINNER_SIDE_KEY, winner_str).await?;
 
-    let new_active = ActiveMatch {
-        match_id: Uuid::new_v4().to_string(),
-        phase: MatchPhase::Setup,
-        blue_player_ids: rotated.blue_player_ids,
-        red_player_ids: rotated.red_player_ids,
-        match_type: active.match_type.clone(),
-        target_score: active.target_score,
-        win_by_two: true,
-        team_size: active.team_size,
-        blue_score: 0,
-        red_score: 0,
-        blue_sets: 0,
-        red_sets: 0,
-        current_set: 1,
-        completed_sets: vec![],
-        started_at: String::new(),
-        undo_stack: vec![],
-    };
-    save_active_match(pool, &new_active).await?;
-
-    Ok(())
+    match rotation_result {
+        Ok(rotated) => {
+            let new_active = ActiveMatch {
+                match_id: Uuid::new_v4().to_string(),
+                phase: MatchPhase::Setup,
+                blue_player_ids: rotated.blue_player_ids,
+                red_player_ids: rotated.red_player_ids,
+                match_type: active.match_type.clone(),
+                target_score: active.target_score,
+                win_by_two: active.win_by_two,
+                team_size: active.team_size,
+                blue_score: 0,
+                red_score: 0,
+                blue_sets: 0,
+                red_sets: 0,
+                current_set: 1,
+                completed_sets: vec![],
+                started_at: String::new(),
+                undo_stack: vec![],
+            };
+            save_active_match(pool, &new_active).await?;
+            Ok(())
+        }
+        Err(AppError::Validation(_)) => {
+            clear_active_match(pool).await?;
+            Ok(())
+        }
+        Err(err) => Err(err),
+    }
 }
 
 async fn move_players_to_queue_end(pool: &SqlitePool, player_ids: &[String]) -> AppResult<()> {
@@ -987,57 +1123,4 @@ fn compute_duration_secs(started_at: &str, finished_at: &str) -> i64 {
     }
 }
 
-async fn insert_match_player(
-    pool: &SqlitePool,
-    match_id: &str,
-    player: &Player,
-    team: &str,
-    result: &str,
-) -> AppResult<()> {
-    let id = Uuid::new_v4().to_string();
-    sqlx::query(
-        r#"
-        INSERT INTO match_players (id, match_id, player_id, team, player_name, elo_before, elo_after, result)
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?)
-        "#,
-    )
-    .bind(&id)
-    .bind(match_id)
-    .bind(&player.id)
-    .bind(team)
-    .bind(&player.name)
-    .bind(player.elo)
-    .bind(player.elo)
-    .bind(result)
-    .execute(pool)
-    .await?;
-    Ok(())
-}
 
-async fn update_player_stats(
-    pool: &SqlitePool,
-    player_id: &str,
-    won: bool,
-    now: &str,
-) -> AppResult<()> {
-    if won {
-        sqlx::query(
-            "UPDATE players SET matches_played = matches_played + 1, wins = wins + 1, last_match_at = ?, updated_at = ? WHERE id = ?",
-        )
-        .bind(now)
-        .bind(now)
-        .bind(player_id)
-        .execute(pool)
-        .await?;
-    } else {
-        sqlx::query(
-            "UPDATE players SET matches_played = matches_played + 1, losses = losses + 1, last_match_at = ?, updated_at = ? WHERE id = ?",
-        )
-        .bind(now)
-        .bind(now)
-        .bind(player_id)
-        .execute(pool)
-        .await?;
-    }
-    Ok(())
-}
