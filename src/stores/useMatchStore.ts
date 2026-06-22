@@ -9,8 +9,8 @@ import type {
   MatchWinner,
   ScoreAction,
 } from "@/types/match";
-import type { Player } from "@/types/player";
 import { matchApi } from "@/lib/matchApi";
+import { usePlayersStore } from "@/stores/usePlayersStore";
 
 export interface MatchFormatConfig {
   matchType: MatchType;
@@ -21,13 +21,10 @@ export interface MatchFormatConfig {
 interface MatchState {
   active: boolean;
   matchData: ActiveMatch | null;
-  bluePlayers: Player[];
-  redPlayers: Player[];
   history: MatchHistoryItem[];
   lastEvent: MatchEvent | null;
   matchResult: MatchResult | null;
-  resultBluePlayers: Player[];
-  resultRedPlayers: Player[];
+  replayTeams: { blue: string[]; red: string[]; format: MatchFormatConfig } | null;
   loading: boolean;
   error: string | null;
 
@@ -41,44 +38,76 @@ interface MatchState {
   nextMatch: () => Promise<void>;
   cancel: () => Promise<void>;
   generateOpponent: () => Promise<void>;
+  rematch: () => Promise<void>;
   loadHistory: () => Promise<void>;
   clearResult: () => void;
   clearError: () => void;
   clearLastEvent: () => void;
 }
 
-function applyResponse(set: (partial: Partial<MatchState>) => void, resp: ActiveMatchResponse) {
+function applyResponse(set: (partial: Partial<MatchState>) => void, resp: ActiveMatchResponse): void {
   set({
     active: resp.active,
     matchData: resp.match_data ?? null,
-    bluePlayers: resp.blue_players,
-    redPlayers: resp.red_players,
     lastEvent: resp.event ?? null,
   });
+
+  try {
+    // Keep players store in sync with the authoritative match response.
+    // This prevents duplication where a player appears both in a team and in the pool
+    // because different stores were out of sync.
+    const playersStore = usePlayersStore;
+    const current = playersStore.getState().players || [];
+
+    // Normalize statuses coming from the match response to ensure consistency.
+    const respPlayers = [
+      ...resp.blue_players.map((p) => ({ ...p, status: "blue" as const })),
+      ...resp.red_players.map((p) => ({ ...p, status: "red" as const })),
+    ];
+
+    const respById = new Map<string, (typeof respPlayers)[0]>(respPlayers.map((p) => [p.id, p]));
+
+    const merged = current
+      .map((p) => (respById.has(p.id) ? (respById.get(p.id) as any) : p))
+      .filter(Boolean);
+
+    const missing = respPlayers.filter((p) => !current.some((c) => c.id === p.id));
+
+    const finalList = [...merged, ...missing].sort((a, b) => a.name.localeCompare(b.name));
+    playersStore.setState({ players: finalList });
+  } catch (err) {
+    // eslint-disable-next-line no-console
+    console.warn("Failed to sync players from match response:", err);
+  }
 }
+
+let _inFlightLoadActive: Promise<void> | null = null;
 
 export const useMatchStore = create<MatchState>((set, get) => ({
   active: false,
   matchData: null,
-  bluePlayers: [],
-  redPlayers: [],
   history: [],
   lastEvent: null,
   matchResult: null,
-  resultBluePlayers: [],
-  resultRedPlayers: [],
+  replayTeams: null,
   loading: false,
   error: null,
 
   async loadActive() {
-    set({ loading: true, error: null });
-    try {
-      const resp = await matchApi.getActive();
-      applyResponse(set, resp);
-      set({ loading: false });
-    } catch (e) {
-      set({ error: String(e), loading: false });
-    }
+    if (_inFlightLoadActive) return _inFlightLoadActive;
+    _inFlightLoadActive = (async () => {
+      set({ loading: true, error: null });
+      try {
+        const resp = await matchApi.getActive();
+        applyResponse(set, resp);
+        set({ loading: false });
+      } catch (e) {
+        set({ error: String(e), loading: false });
+      } finally {
+        _inFlightLoadActive = null;
+      }
+    })();
+    return _inFlightLoadActive;
   },
 
   async setupTeams(blueIds, redIds, format) {
@@ -147,8 +176,9 @@ export const useMatchStore = create<MatchState>((set, get) => ({
   async finish(winner) {
     set({ error: null });
     try {
-      const resp = await matchApi.finish(winner);
       const state = get();
+      const currentMatch = state.matchData;
+      const resp = await matchApi.finish(winner);
       const winnerTeam = winner === "blue" ? "blue" : "red";
       const loserTeam = winner === "blue" ? "red" : "blue";
       const matchResult: MatchResult = {
@@ -164,8 +194,17 @@ export const useMatchStore = create<MatchState>((set, get) => ({
       };
       set({
         matchResult,
-        resultBluePlayers: state.bluePlayers,
-        resultRedPlayers: state.redPlayers,
+        replayTeams: currentMatch
+          ? {
+              blue: currentMatch.blue_player_ids,
+              red: currentMatch.red_player_ids,
+              format: {
+                matchType: currentMatch.match_type,
+                targetScore: currentMatch.target_score,
+                teamSize: currentMatch.team_size,
+              },
+            }
+          : null,
       });
       applyResponse(set, resp);
     } catch (e) {
@@ -179,7 +218,16 @@ export const useMatchStore = create<MatchState>((set, get) => ({
     try {
       const resp = await matchApi.generateOpponent();
       applyResponse(set, resp);
-      set({ matchResult: null, resultBluePlayers: [], resultRedPlayers: [] });
+      set({ matchResult: null, replayTeams: null });
+
+      // Ensure related views are immediately consistent: refresh history and players.
+      try {
+        await get().loadHistory();
+        await usePlayersStore.getState().loadPlayers();
+      } catch (syncErr) {
+        // eslint-disable-next-line no-console
+        console.warn("nextMatch: background sync failed", syncErr);
+      }
     } catch (e) {
       set({ error: String(e) });
       throw e;
@@ -187,7 +235,7 @@ export const useMatchStore = create<MatchState>((set, get) => ({
   },
 
   async cancel() {
-    set({ error: null, matchResult: null, resultBluePlayers: [], resultRedPlayers: [] });
+    set({ error: null, matchResult: null, replayTeams: null });
     try {
       const resp = await matchApi.cancel();
       applyResponse(set, resp);
@@ -198,7 +246,7 @@ export const useMatchStore = create<MatchState>((set, get) => ({
   },
 
   async generateOpponent() {
-    set({ error: null });
+    set({ error: null, matchResult: null, replayTeams: null });
     try {
       const resp = await matchApi.generateOpponent();
       applyResponse(set, resp);
@@ -206,6 +254,15 @@ export const useMatchStore = create<MatchState>((set, get) => ({
       set({ error: String(e) });
       throw e;
     }
+  },
+
+  async rematch() {
+    const { replayTeams } = get();
+    if (!replayTeams) {
+      throw new Error("No rematch teams available");
+    }
+    await get().setupTeams(replayTeams.blue, replayTeams.red, replayTeams.format);
+    await get().startMatch();
   },
 
   async loadHistory() {
@@ -219,7 +276,7 @@ export const useMatchStore = create<MatchState>((set, get) => ({
   },
 
   clearResult() {
-    set({ matchResult: null, resultBluePlayers: [], resultRedPlayers: [] });
+    set({ matchResult: null, replayTeams: null });
   },
 
   clearError() {

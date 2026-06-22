@@ -57,8 +57,6 @@ export default function App() {
         {tab === "queue" && <QueuePage />}
         {tab === "stats" && <StatsPage />}
         {tab === "history" && <HistoryPage />}
-        {tab === "stats" && <StatsPage />}
-        {tab === "history" && <HistoryPage />}
       </div>
       <BottomNav active={tab} onChange={setTab} />
       <Toast />

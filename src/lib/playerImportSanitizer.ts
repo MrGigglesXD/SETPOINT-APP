@@ -229,17 +229,44 @@ export function parsePlayerLine(line: string): { name: string; level: number } |
     return null;
   }
 
-  // Try to extract level from the end
-  const parts = cleaned.split(/\s+/);
+  // Try to extract level from common trailing patterns.
+  // Supported formats: "Name 5", "Name (5)", "Name-5", "Name nivel 5", "Name ★★★★★", or just "Name".
   let level = 3; // default
   let nameStr = cleaned;
 
-  if (parts.length >= 2) {
-    const lastPart = parts[parts.length - 1];
-    if (/^[1-5]$/.test(lastPart)) {
-      level = parseInt(lastPart, 10);
-      nameStr = parts.slice(0, -1).join(" ");
-    }
+  // 1) Stars at the end: ★★★ → level = count
+  const starsMatch = nameStr.match(/(★{1,5})\s*$/);
+  if (starsMatch) {
+    level = Math.min(starsMatch[1].length, 5);
+    nameStr = nameStr.replace(/★+/g, "").trim();
+  }
+
+  // 2) Parentheses: (5)
+  const parenMatch = nameStr.match(/\(\s*([1-5])\s*\)\s*$/);
+  if (parenMatch) {
+    level = parseInt(parenMatch[1], 10);
+    nameStr = nameStr.replace(/\(\s*[1-5]\s*\)\s*$/, "").trim();
+  }
+
+  // 3) Dash or hyphen suffix: -5 or –5
+  const dashMatch = nameStr.match(/[-–—]\s*([1-5])\s*$/);
+  if (dashMatch) {
+    level = parseInt(dashMatch[1], 10);
+    nameStr = nameStr.replace(/[-–—]\s*[1-5]\s*$/, "").trim();
+  }
+
+  // 4) 'nivel 5' suffix (Spanish)
+  const nivelMatch = nameStr.match(/\bnivel\s*([1-5])\s*$/i);
+  if (nivelMatch) {
+    level = parseInt(nivelMatch[1], 10);
+    nameStr = nameStr.replace(/\bnivel\s*[1-5]\s*$/i, "").trim();
+  }
+
+  // 5) Plain trailing number 'Name 5'
+  const numMatch = nameStr.match(/\s([1-5])\s*$/);
+  if (numMatch) {
+    level = parseInt(numMatch[1], 10);
+    nameStr = nameStr.replace(/\s[1-5]\s*$/, "").trim();
   }
 
   if (!isValidHumanName(nameStr)) {

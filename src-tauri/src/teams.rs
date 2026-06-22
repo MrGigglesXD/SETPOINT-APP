@@ -108,8 +108,16 @@ pub fn balance_by_level(candidates: &[Player], team_size: i64) -> BalancedTeamsR
     // If there are not many candidates, fall back to greedy algorithm
     if pool.len() <= 1 {
         return BalancedTeamsResult {
-            blue_player_ids: pool.iter().take(team_size as usize).map(|p| p.id.clone()).collect(),
-            red_player_ids: pool.iter().skip(team_size as usize).map(|p| p.id.clone()).collect(),
+            blue_player_ids: pool
+                .iter()
+                .take(team_size as usize)
+                .map(|p| p.id.clone())
+                .collect(),
+            red_player_ids: pool
+                .iter()
+                .skip(team_size as usize)
+                .map(|p| p.id.clone())
+                .collect(),
         };
     }
 
@@ -149,7 +157,10 @@ pub fn balance_by_level(candidates: &[Player], team_size: i64) -> BalancedTeamsR
         }
     }
 
-    BalancedTeamsResult { blue_player_ids: blue, red_player_ids: red }
+    BalancedTeamsResult {
+        blue_player_ids: blue,
+        red_player_ids: red,
+    }
 }
 
 #[tauri::command]

@@ -1,10 +1,11 @@
-import { useEffect, useState } from "react";
-import { RefreshCw, Hourglass, LogIn } from "lucide-react";
+import { useEffect } from "react";
+import { RefreshCw, Hourglass } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Card, Avatar } from "@/components/ui/card";
 import { showToast } from "@/components/ui/toast";
-import { queueApi, type QueuePlayer } from "@/lib/queueApi";
-import { initials, levelStars } from "@/types/player";
+import { queueApi } from "@/lib/queueApi";
+import { usePlayersStore, selectWaitingQueue } from "@/stores/usePlayersStore";
+import { initials, levelStars, waitMinutes } from "@/types/player";
 
 function statusLabel(status: string): string {
   return {
@@ -17,32 +18,20 @@ function statusLabel(status: string): string {
 }
 
 export function QueuePage() {
-  const [queue, setQueue] = useState<QueuePlayer[]>([]);
-  const [loading, setLoading] = useState(true);
-
-  async function load() {
-    setLoading(true);
-    try {
-      const data = await queueApi.list();
-      setQueue(data);
-    } catch (e) {
-      showToast(String(e));
-    } finally {
-      setLoading(false);
-    }
-  }
+  const playersState = usePlayersStore();
+  const queue = selectWaitingQueue(playersState);
 
   useEffect(() => {
-    load();
-    const id = setInterval(load, 5000);
+    playersState.loadPlayers();
+    const id = setInterval(() => playersState.loadPlayers(), 5000);
     return () => clearInterval(id);
-  }, []);
+  }, [playersState]);
 
   async function handleResetOrder() {
     try {
       const n = await queueApi.resetOrder();
       showToast(`✓ Orden actualizado (${n} jugadores)`);
-      await load();
+      await playersState.loadPlayers();
     } catch (e) {
       showToast(String(e));
     }
@@ -65,9 +54,7 @@ export function QueuePage() {
         Orden automático por llegada. Se actualiza al cambiar equipos.
       </div>
 
-      {loading && queue.length === 0 ? (
-        <div className="text-center py-8 text-muted text-sm">Cargando…</div>
-      ) : queue.length === 0 ? (
+      {queue.length === 0 ? (
         <div className="flex flex-col items-center gap-3 py-12 text-center">
           <Hourglass size={48} className="text-muted" />
           <div className="text-sm text-muted">Cola vacía — todos están en cancha o pool.</div>
@@ -77,20 +64,15 @@ export function QueuePage() {
           {queue.map((p, i) => (
             <Card key={p.id} className="flex items-center gap-3">
               <div className="text-lg font-black text-setpoint-yellow w-7 text-center">
-                {p.position || i + 1}
+                {i + 1}
               </div>
               <Avatar initials={initials(p.name)} />
               <div className="flex-1 min-w-0">
                 <div className="flex items-center gap-2">
                   <div className="text-sm font-bold truncate">{p.name}</div>
-                  {p.next_in && (
-                    <span className="inline-flex items-center gap-1 rounded-md bg-setpoint-yellow px-1.5 py-0.5 text-[10px] font-black text-[#1a1a00]">
-                      <LogIn size={11} /> Siguiente
-                    </span>
-                  )}
                 </div>
                 <div className="text-[11px] text-muted leading-relaxed">
-                  Nivel {p.level} {levelStars(p.level)} · {p.wait_minutes}m esperando ·{" "}
+                  Nivel {p.level} {levelStars(p.level)} · {waitMinutes(p.arrival_time)}m esperando ·{" "}
                   {statusLabel(p.status)}
                 </div>
               </div>

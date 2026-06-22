@@ -8,7 +8,7 @@ const tabs: { id: Tab; label: string; icon: React.ElementType }[] = [
   { id: "match", label: "Partido", icon: Volleyball },
   { id: "scoreboard", label: "Marcador", icon: Monitor },
   { id: "queue", label: "Cola", icon: Hourglass },
-  { id: "stats", label: "Stats", icon: BarChart3 },
+  { id: "stats", label: "Estadísticas", icon: BarChart3 },
   { id: "history", label: "Historial", icon: History },
 ];
 

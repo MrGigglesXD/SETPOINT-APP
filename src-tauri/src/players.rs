@@ -26,17 +26,31 @@ fn is_reserved_word(name: &str) -> bool {
         .chars()
         .filter(|c| c.is_alphabetic())
         .collect::<String>();
-    
+
     matches!(
         normalized.as_str(),
-        "name" | "names" | "player" | "players" | "id" | "level" | "position"
-            | "posición" | "nombre" | "nombres" | "jugador" | "jugadores"
-            | "nivel" | "nro" | "no" | "col" | "row"
+        "name"
+            | "names"
+            | "player"
+            | "players"
+            | "id"
+            | "level"
+            | "position"
+            | "posición"
+            | "nombre"
+            | "nombres"
+            | "jugador"
+            | "jugadores"
+            | "nivel"
+            | "nro"
+            | "no"
+            | "col"
+            | "row"
     )
 }
 
 /// Sanitize a player name by removing formatting, table markers, bullets, etc.
-/// 
+///
 /// Performs:
 /// 1. Trim whitespace
 /// 2. Remove table pipes (|)
@@ -52,7 +66,10 @@ fn sanitize_name(raw: &str) -> String {
     cleaned = cleaned.replace('|', " ");
 
     // Remove Markdown bold/italic: **, __, *, _
-    cleaned = cleaned.replace(['*', '_'], "").replace("**", "").replace("__", "");
+    cleaned = cleaned
+        .replace(['*', '_'], "")
+        .replace("**", "")
+        .replace("__", "");
 
     // Remove bullet markers at the start: -, *, +, followed by space
     if cleaned.starts_with("- ") || cleaned.starts_with("* ") || cleaned.starts_with("+ ") {

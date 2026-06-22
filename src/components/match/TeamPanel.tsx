@@ -1,4 +1,5 @@
 import { Plus, X } from "lucide-react";
+import { cn } from "@/lib/utils";
 import { Card, Pill, Avatar } from "@/components/ui/card";
 import { PlayerCard } from "@/components/players/PlayerCard";
 import { initials, type Player } from "@/types/player";
@@ -8,18 +9,21 @@ export function TeamPanel({
   label,
   players,
   pool,
+  teamSize,
   onAssign,
 }: {
   team: "blue" | "red";
   label: string;
   players: Player[];
   pool: Player[];
+  teamSize: number;
   onAssign: (id: string, side: "blue" | "red" | "none") => void;
 }) {
   const border = team === "blue" ? "border-setpoint-blue/40" : "border-setpoint-red/40";
   const header = team === "blue" ? "text-setpoint-blue-text" : "text-setpoint-red-text";
   const teamIds = new Set(players.map((p) => p.id));
   const available = pool.filter((p) => !teamIds.has(p.id));
+  const teamFull = players.length >= teamSize;
 
   return (
     <Card className={`border-2 ${border} flex flex-col gap-2.5`}>
@@ -61,8 +65,18 @@ export function TeamPanel({
               trailing={
                 <button
                   aria-label={`Agregar ${p.name}`}
-                  className="rounded-lg p-2 text-muted transition-colors hover:bg-card3"
-                  onClick={() => onAssign(p.id, team)}
+                  disabled={teamFull}
+                  className={cn(
+                    "rounded-lg p-2 transition-colors",
+                    teamFull
+                      ? "cursor-not-allowed opacity-40"
+                      : "text-muted hover:bg-card3"
+                  )}
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    if (teamFull) return;
+                    onAssign(p.id, team);
+                  }}
                 >
                   <Plus size={16} className={header} />
                 </button>

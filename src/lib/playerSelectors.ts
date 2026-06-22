@@ -28,3 +28,19 @@ export function selectQueuePlayers(state: PlayersSlice): Player[] {
     .filter((p) => p.status === "waiting" && !!p.arrival_time)
     .sort((a, b) => new Date(a.arrival_time).getTime() - new Date(b.arrival_time).getTime());
 }
+
+/**
+ * Get current match blue team players (derived from canonical players store).
+ * Enforces Player State Invariant: never returns duplicates, only blue status.
+ */
+export function selectCurrentBluePlayers(state: PlayersSlice): Player[] {
+  return state.players.filter((p) => p.status === "blue");
+}
+
+/**
+ * Get current match red team players (derived from canonical players store).
+ * Enforces Player State Invariant: never returns duplicates, only red status.
+ */
+export function selectCurrentRedPlayers(state: PlayersSlice): Player[] {
+  return state.players.filter((p) => p.status === "red");
+}

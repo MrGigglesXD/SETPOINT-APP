@@ -55,7 +55,7 @@ export function PlayerCard({
         selected && "border-setpoint-yellow ring-1 ring-setpoint-yellow/50 bg-setpoint-yellow/5",
         compact ? "p-3" : "hover:-translate-y-0.5 hover:shadow-lg"
       )}
-      onClick={selectionMode ? onSelect : undefined}
+      onClick={onSelect}
     >
       <div className="flex items-start gap-3">
         {selectionMode && (

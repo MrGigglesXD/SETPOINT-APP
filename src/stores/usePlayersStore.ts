@@ -29,6 +29,8 @@ interface PlayersState {
   clearError: () => void;
 }
 
+let _inFlightLoadPlayers: Promise<void> | null = null;
+
 export const usePlayersStore = create<PlayersState>((set, get) => ({
   players: [],
   loading: false,
@@ -36,13 +38,19 @@ export const usePlayersStore = create<PlayersState>((set, get) => ({
   searchQuery: "",
 
   async loadPlayers() {
+    if (_inFlightLoadPlayers) return _inFlightLoadPlayers;
     set({ loading: true, error: null });
-    try {
-      const players = await playersApi.list();
-      set({ players, loading: false });
-    } catch (e) {
-      set({ error: String(e), loading: false });
-    }
+    _inFlightLoadPlayers = (async () => {
+      try {
+        const players = await playersApi.list();
+        set({ players, loading: false });
+      } catch (e) {
+        set({ error: String(e), loading: false });
+      } finally {
+        _inFlightLoadPlayers = null;
+      }
+    })();
+    return _inFlightLoadPlayers;
   },
 
   async addPlayer(payload) {

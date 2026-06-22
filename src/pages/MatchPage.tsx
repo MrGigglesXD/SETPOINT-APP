@@ -64,6 +64,14 @@ export function MatchPage({ onGoScoreboard }: { onGoScoreboard?: () => void }) {
   }
 
   async function handleAssign(playerId: string, team: "blue" | "red" | "none") {
+    if (team !== "none") {
+      const teamPlayers = team === "blue" ? blueTeam : redTeam;
+      if (teamPlayers.length >= teamSize) {
+        showToast("El equipo ya alcanzó el formato seleccionado");
+        return;
+      }
+    }
+
     try {
       await teamsApi.assign(playerId, team);
       await refresh();
@@ -82,6 +90,51 @@ export function MatchPage({ onGoScoreboard }: { onGoScoreboard?: () => void }) {
     }
   }
 
+  async function handleTeamSizeChange(size: TeamSize) {
+    if (size === teamSize) return;
+    setTeamSize(size);
+
+    if (matchData?.phase === "setup" && (blueTeam.length > 0 || redTeam.length > 0)) {
+      try {
+        await cancel();
+        await refresh();
+        showToast("Formato cambiado: equipos y pool reiniciados");
+      } catch {
+        // ignore, toast handled by store
+      }
+    }
+  }
+
+  async function handleMatchTypeChange(type: MatchType) {
+    if (type === matchType) return;
+    setMatchType(type);
+
+    if (matchData?.phase === "setup" && (blueTeam.length > 0 || redTeam.length > 0)) {
+      try {
+        await cancel();
+        await refresh();
+        showToast("Formato cambiado: equipos y pool reiniciados");
+      } catch {
+        // ignore, toast handled by store
+      }
+    }
+  }
+
+  async function handleTargetScoreChange(score: TargetScore) {
+    if (score === targetScore) return;
+    setTargetScore(score);
+
+    if (matchData?.phase === "setup" && (blueTeam.length > 0 || redTeam.length > 0)) {
+      try {
+        await cancel();
+        await refresh();
+        showToast("Formato cambiado: equipos y pool reiniciados");
+      } catch {
+        // ignore, toast handled by store
+      }
+    }
+  }
+
   async function handleGenerateOpponent() {
     try {
       await generateOpponent();
@@ -93,8 +146,8 @@ export function MatchPage({ onGoScoreboard }: { onGoScoreboard?: () => void }) {
   }
 
   async function handleSave() {
-    if (blueTeam.length === 0 || redTeam.length === 0) {
-      showToast("Selecciona al menos un jugador por equipo");
+    if (blueTeam.length !== teamSize || redTeam.length !== teamSize) {
+      showToast(`Cada equipo debe tener ${teamSize} jugadores`);
       return;
     }
     try {
@@ -111,8 +164,8 @@ export function MatchPage({ onGoScoreboard }: { onGoScoreboard?: () => void }) {
   }
 
   async function handleStart() {
-    if (blueTeam.length === 0 || redTeam.length === 0) {
-      showToast("Arma ambos equipos primero");
+    if (blueTeam.length !== teamSize || redTeam.length !== teamSize) {
+      showToast(`Cada equipo debe tener ${teamSize} jugadores`);
       return;
     }
     try {
@@ -154,9 +207,9 @@ export function MatchPage({ onGoScoreboard }: { onGoScoreboard?: () => void }) {
         matchType={matchType}
         targetScore={targetScore}
         teamSize={teamSize}
-        onMatchTypeChange={setMatchType}
-        onTargetScoreChange={setTargetScore}
-        onTeamSizeChange={setTeamSize}
+        onMatchTypeChange={handleMatchTypeChange}
+        onTargetScoreChange={handleTargetScoreChange}
+        onTeamSizeChange={handleTeamSizeChange}
       />
 
       <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
@@ -168,8 +221,8 @@ export function MatchPage({ onGoScoreboard }: { onGoScoreboard?: () => void }) {
         </Button>
       </div>
 
-      <TeamPanel team="blue" label="Equipo Azul" players={blueTeam} pool={pool} onAssign={handleAssign} />
-      <TeamPanel team="red" label="Equipo Rojo" players={redTeam} pool={pool} onAssign={handleAssign} />
+      <TeamPanel team="blue" label="Equipo Azul" players={blueTeam} pool={pool} teamSize={teamSize} onAssign={handleAssign} />
+      <TeamPanel team="red" label="Equipo Rojo" players={redTeam} pool={pool} teamSize={teamSize} onAssign={handleAssign} />
 
       <div className="text-xs text-muted text-center">
         Pool: {pool.length} jugador{pool.length === 1 ? "" : "es"} disponibles

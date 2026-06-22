@@ -303,9 +303,15 @@ fn validate_team_size(blue_ids: &[String], red_ids: &[String], team_size: i64) -
 
 fn validate_active_match(active: &ActiveMatch) -> AppResult<()> {
     if active.team_size != 4 && active.team_size != 6 {
-        return Err(AppError::Validation("invalid active match team size".into()));
+        return Err(AppError::Validation(
+            "invalid active match team size".into(),
+        ));
     }
-    validate_team_size(&active.blue_player_ids, &active.red_player_ids, active.team_size)?;
+    validate_team_size(
+        &active.blue_player_ids,
+        &active.red_player_ids,
+        active.team_size,
+    )?;
     validate_team_setup(&active.blue_player_ids, &active.red_player_ids)
 }
 
@@ -470,7 +476,11 @@ pub async fn setup_match_teams(
     db: State<'_, DbState>,
     payload: SetupTeamsPayload,
 ) -> AppResult<ActiveMatchResponse> {
-    validate_team_size(&payload.blue_player_ids, &payload.red_player_ids, payload.team_size)?;
+    validate_team_size(
+        &payload.blue_player_ids,
+        &payload.red_player_ids,
+        payload.team_size,
+    )?;
     validate_team_setup(&payload.blue_player_ids, &payload.red_player_ids)?;
     validate_format(&payload.match_type, payload.target_score)?;
     if payload.team_size != 4 && payload.team_size != 6 {
@@ -524,10 +534,16 @@ pub async fn start_match(db: State<'_, DbState>) -> AppResult<ActiveMatchRespons
         .ok_or_else(|| AppError::Validation("no match setup — select teams first".into()))?;
 
     if !matches!(active.phase, MatchPhase::Setup) {
-        return Err(AppError::Validation("match must be in setup phase before starting".into()));
+        return Err(AppError::Validation(
+            "match must be in setup phase before starting".into(),
+        ));
     }
 
-    validate_team_size(&active.blue_player_ids, &active.red_player_ids, active.team_size)?;
+    validate_team_size(
+        &active.blue_player_ids,
+        &active.red_player_ids,
+        active.team_size,
+    )?;
     validate_team_setup(&active.blue_player_ids, &active.red_player_ids)?;
     validate_format(&active.match_type, active.target_score)?;
 
@@ -738,9 +754,12 @@ pub async fn finish_match(
     };
 
     finalize_match(&db.0, &active, winner_str).await?;
-    build_active_response(&db.0, Some(MatchEvent::MatchCompleted {
-        winner: winner_str.to_string(),
-    }))
+    build_active_response(
+        &db.0,
+        Some(MatchEvent::MatchCompleted {
+            winner: winner_str.to_string(),
+        }),
+    )
     .await
 }
 
@@ -975,7 +994,11 @@ async fn finalize_match(
 
     // Fetch players involved via the transaction and insert match_players + update stats
     let mut participants: Vec<Player> = Vec::new();
-    for id in active.blue_player_ids.iter().chain(active.red_player_ids.iter()) {
+    for id in active
+        .blue_player_ids
+        .iter()
+        .chain(active.red_player_ids.iter())
+    {
         if let Some(p) = sqlx::query_as::<_, Player>("SELECT * FROM players WHERE id = ?")
             .bind(id)
             .fetch_optional(&mut *tx)
@@ -989,7 +1012,11 @@ async fn finalize_match(
         let won = (winner_str == "blue" && active.blue_player_ids.contains(&player.id))
             || (winner_str == "red" && active.red_player_ids.contains(&player.id));
         let result = if won { "win" } else { "loss" };
-        let team = if active.blue_player_ids.contains(&player.id) { "blue" } else { "red" };
+        let team = if active.blue_player_ids.contains(&player.id) {
+            "blue"
+        } else {
+            "red"
+        };
 
         let mp_id = Uuid::new_v4().to_string();
         sqlx::query(
@@ -1122,5 +1149,3 @@ fn compute_duration_secs(started_at: &str, finished_at: &str) -> i64 {
         _ => 0,
     }
 }
-
-

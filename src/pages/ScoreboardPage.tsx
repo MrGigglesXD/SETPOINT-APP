@@ -5,6 +5,7 @@ import { Card } from "@/components/ui/card";
 import { showToast } from "@/components/ui/toast";
 import { ScoreboardView } from "@/components/scoreboard/ScoreboardView";
 import { useScoreboardController } from "@/hooks/useScoreboardController";
+import { useMatchStore } from "@/stores/useMatchStore";
 import { formatDuration } from "@/types/match";
 
 export function ScoreboardPage({
@@ -22,26 +23,39 @@ export function ScoreboardPage({
     matchData,
     bluePlayers,
     redPlayers,
+    players,
     lastEvent,
     matchResult,
-    resultBluePlayers,
-    resultRedPlayers,
+    replayTeams,
     error,
     loading,
     loadActive,
     loadPlayers,
+    loadHistory,
     startMatch,
     score,
     undo,
     reset,
     finish,
-    nextMatch,
+    generateOpponent,
+    rematch,
     clearError,
     clearLastEvent,
     clearResult,
     tick,
     isLive,
   } = useScoreboardController();
+
+  const resultBluePlayers = replayTeams
+    ? replayTeams.blue
+        .map((id) => players.find((p) => p.id === id))
+        .filter(Boolean)
+    : [];
+  const resultRedPlayers = replayTeams
+    ? replayTeams.red
+        .map((id) => players.find((p) => p.id === id))
+        .filter(Boolean)
+    : [];
 
   useEffect(() => {
     if (error) {
@@ -60,15 +74,13 @@ export function ScoreboardPage({
       showToast(`✓ Gana ${t}`);
       loadPlayers();
       loadActive();
+      loadHistory();
     }
     clearLastEvent();
-  }, [lastEvent, loadPlayers, loadActive, clearLastEvent]);
+  }, [lastEvent, loadPlayers, loadActive, loadHistory, clearLastEvent]);
 
-  useEffect(() => {
-    if (!loading && !matchData && !matchResult) {
-      onNoActive?.();
-    }
-  }, [matchData, matchResult, loading, onNoActive]);
+// Do not auto-navigate away when there's no active match.
+// Show a clear message and offer a button to go to the Match screen instead.
 
   async function handleStart() {
     try {
@@ -82,10 +94,23 @@ export function ScoreboardPage({
 
   async function handleNextMatch() {
     try {
-      await nextMatch();
+      await generateOpponent();
+      clearResult();
+      await loadPlayers();
+      await loadActive();
+      loadHistory();
       showToast("✓ Equipos preparados");
     } catch {
       // toast
+    }
+  }
+
+  async function handleRematch() {
+    try {
+      await rematch();
+      showToast("✓ Revancha iniciada");
+    } catch (e) {
+      showToast(String(e));
     }
   }
 
@@ -123,18 +148,19 @@ export function ScoreboardPage({
           </div>
 
           <div className="text-xs">
-            <span className="font-semibold">{winnerTeam}:</span> {winnerPlayers.map(p => p.name).join(", ")}
+            <span className="font-semibold">{winnerTeam}:</span> {winnerPlayers.map((p: any) => p.name).join(", ")}
           </div>
         </Card>
 
         <div className="grid grid-cols-2 gap-2">
-          <Button 
-            variant="yellow"
-            onClick={handleNextMatch}
-            disabled={loading}
-          >
-            <RotateCw size={16} /> Siguiente
-          </Button>
+          <div className="grid grid-cols-1 gap-2">
+            <Button variant="yellow" fullWidth onClick={handleNextMatch} disabled={loading}>
+              <RotateCw size={16} /> Generar siguiente partido
+            </Button>
+            <Button variant="ghost" fullWidth onClick={handleRematch} disabled={!replayTeams || loading}>
+              Revancha
+            </Button>
+          </div>
           <Button 
             variant="ghost"
             onClick={() => {
@@ -167,8 +193,11 @@ export function ScoreboardPage({
   if (!matchData) {
     return (
       <div className="flex flex-col items-center justify-center gap-4 p-10 text-center">
-        <div className="text-lg font-bold">Sin partido configurado</div>
+        <div className="text-lg font-bold">No existe un partido activo</div>
         <div className="text-sm text-muted">Arma equipos en la pestaña Partido primero.</div>
+        <div className="flex gap-2 mt-2">
+          <Button variant="yellow" onClick={() => onGoMatch?.()}>Ir a Partido</Button>
+        </div>
       </div>
     );
   }

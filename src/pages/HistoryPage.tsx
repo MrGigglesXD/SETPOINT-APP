@@ -47,8 +47,8 @@ export function HistoryPage() {
         </div>
       ) : (
         <div className="flex flex-col gap-2.5">
-          {history.map((m) => (
-            <Card key={m.id} className="flex flex-col gap-2.5">
+          {history.map((m: any) => (
+              <Card key={m.id} className="flex flex-col gap-2.5">
               <div className="flex items-center justify-between gap-2">
                 <div className="text-sm font-bold">{formatDate(m.finished_at || m.date)}</div>
                 <Pill variant={m.winner === "blue" ? "blue" : "red"}>
@@ -66,7 +66,7 @@ export function HistoryPage() {
                     Sets {m.blue_sets} – {m.red_sets}
                   </div>
                   <div className="flex flex-wrap justify-center gap-2">
-                    {m.sets.map((s, i) => (
+                      {m.sets.map((s: any, i: number) => (
                       <div
                         key={i}
                         className="bg-card2 rounded-lg px-2.5 py-1.5 text-xs font-bold tabular-nums"
