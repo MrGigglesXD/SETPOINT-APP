@@ -1,7 +1,7 @@
 import { useEffect } from "react";
 import { Monitor, Play, History, Home, RotateCw } from "lucide-react";
 import { Button } from "@/components/ui/button";
-import { Card, Pill } from "@/components/ui/card";
+import { Card } from "@/components/ui/card";
 import { showToast } from "@/components/ui/toast";
 import { ScoreboardView } from "@/components/scoreboard/ScoreboardView";
 import { useScoreboardController } from "@/hooks/useScoreboardController";
@@ -92,7 +92,6 @@ export function ScoreboardPage({
   // Match result screen
   if (matchResult && resultBluePlayers.length > 0 && resultRedPlayers.length > 0) {
     const winnerTeam = matchResult.winner === "blue" ? "Azul" : "Rojo";
-    const loserTeam = matchResult.winner === "blue" ? "Rojo" : "Azul";
     const winnerPlayers = matchResult.winner === "blue" ? resultBluePlayers : resultRedPlayers;
     return (
       <div className="flex flex-col gap-4 p-4">
