@@ -11,6 +11,15 @@ pub struct DbState(pub SqlitePool);
 
 const VALID_STATUSES: [&str; 5] = ["available", "blue", "red", "waiting", "absent"];
 
+async fn next_queue_position(db: &SqlitePool) -> AppResult<i64> {
+    let max_position = sqlx::query_scalar::<_, Option<i64>>("
+        SELECT MAX(queue_position) FROM players WHERE status = 'waiting'
+    ")
+    .fetch_one(db)
+    .await?;
+    Ok(max_position.unwrap_or(0) + 1)
+}
+
 fn validate_level(level: i64) -> AppResult<()> {
     if !(1..=5).contains(&level) {
         return Err(AppError::Validation("level must be between 1 and 5".into()));
@@ -159,10 +168,11 @@ fn validate_name(name: &str) -> AppResult<String> {
 
 #[tauri::command]
 pub async fn get_players(db: State<'_, DbState>) -> AppResult<Vec<Player>> {
-    let players =
-        sqlx::query_as::<_, Player>("SELECT * FROM players ORDER BY name COLLATE NOCASE ASC")
-            .fetch_all(&db.0)
-            .await?;
+    let players = sqlx::query_as::<_, Player>(
+        "SELECT * FROM players ORDER BY queue_position ASC, arrival_time ASC, created_at ASC",
+    )
+    .fetch_all(&db.0)
+    .await?;
 
     Ok(players)
 }
@@ -216,18 +226,29 @@ pub async fn create_player(db: State<'_, DbState>, payload: NewPlayer) -> AppRes
 
     let id = Uuid::new_v4().to_string();
     let now = now_iso();
-    let _future_tournament_arrival_flag = payload.mark_arrived;
+    let (status, arrival_time, waiting_since, queue_position) = if payload.mark_arrived {
+        let arrival = now.clone();
+        ("waiting", arrival.clone(), arrival.clone(), next_queue_position(&db.0).await?)
+    } else {
+        ("available", String::new(), String::new(), 0)
+    };
 
     sqlx::query(
         r#"
-        INSERT INTO players (id, name, level, elo, arrival_time, matches_played, wins, losses, status, court_since, last_match_at, created_at, updated_at)
-        VALUES (?, ?, ?, 1000, ?, 0, 0, 0, 'waiting', '', '', ?, ?)
+        INSERT INTO players (
+            id, name, level, elo, arrival_time, waiting_since, queue_position,
+            matches_played, wins, losses, status, court_since, last_match_at, created_at, updated_at
+        )
+        VALUES (?, ?, ?, 1000, ?, ?, ?, 0, 0, 0, ?, '', '', ?, ?)
         "#,
     )
     .bind(&id)
     .bind(&name)
     .bind(payload.level)
-    .bind(&now)
+    .bind(&arrival_time)
+    .bind(&waiting_since)
+    .bind(queue_position)
+    .bind(status)
     .bind(&now)
     .bind(&now)
     .execute(&db.0)
@@ -352,24 +373,35 @@ pub async fn set_player_status(
     }
 
     let now = now_iso();
+    let queue_position = if status == "waiting" {
+        next_queue_position(&db.0).await?
+    } else {
+        0
+    };
 
     let result = match status.as_str() {
         "waiting" => {
-            sqlx::query("UPDATE players SET status = ?, arrival_time = ?, court_since = '', updated_at = ? WHERE id = ?")
-                .bind(&status)
-                .bind(&now)
-                .bind(&now)
-                .bind(&id)
-                .execute(&db.0)
-                .await?
+            sqlx::query(
+                "UPDATE players SET status = ?, arrival_time = ?, waiting_since = ?, queue_position = ?, court_since = '', updated_at = ? WHERE id = ?",
+            )
+            .bind(&status)
+            .bind(&now)
+            .bind(&now)
+            .bind(queue_position)
+            .bind(&now)
+            .bind(&id)
+            .execute(&db.0)
+            .await?
         }
         "available" | "absent" => {
-            sqlx::query("UPDATE players SET status = ?, arrival_time = '', court_since = '', updated_at = ? WHERE id = ?")
-                .bind(&status)
-                .bind(&now)
-                .bind(&id)
-                .execute(&db.0)
-                .await?
+            sqlx::query(
+                "UPDATE players SET status = ?, arrival_time = '', waiting_since = '', queue_position = 0, court_since = '', updated_at = ? WHERE id = ?",
+            )
+            .bind(&status)
+            .bind(&now)
+            .bind(&id)
+            .execute(&db.0)
+            .await?
         }
         _ => {
             sqlx::query("UPDATE players SET status = ?, updated_at = ? WHERE id = ?")
@@ -391,10 +423,13 @@ pub async fn set_player_status(
 #[tauri::command]
 pub async fn mark_arrived(db: State<'_, DbState>, id: String) -> AppResult<Player> {
     let now = now_iso();
+    let queue_position = next_queue_position(&db.0).await?;
     let result = sqlx::query(
-        "UPDATE players SET arrival_time = ?, status = 'waiting', updated_at = ? WHERE id = ?",
+        "UPDATE players SET arrival_time = ?, status = 'waiting', waiting_since = ?, queue_position = ?, updated_at = ? WHERE id = ?",
     )
     .bind(&now)
+    .bind(&now)
+    .bind(queue_position)
     .bind(&now)
     .bind(&id)
     .execute(&db.0)
@@ -411,7 +446,7 @@ pub async fn mark_arrived(db: State<'_, DbState>, id: String) -> AppResult<Playe
 pub async fn unmark_arrived(db: State<'_, DbState>, id: String) -> AppResult<Player> {
     let now = now_iso();
     let result = sqlx::query(
-        "UPDATE players SET arrival_time = '', status = 'available', updated_at = ? WHERE id = ?",
+        "UPDATE players SET arrival_time = '', waiting_since = '', queue_position = 0, status = 'available', updated_at = ? WHERE id = ?",
     )
     .bind(&now)
     .bind(&id)
@@ -443,6 +478,8 @@ pub async fn import_players(
     let mut skipped = 0i64;
     let mut skipped_names = Vec::new();
     let base = chrono::Utc::now();
+
+    let mut queue_position = next_queue_position(&db.0).await?;
 
     for row in rows {
         let name = match validate_name(&row.name) {
@@ -477,19 +514,25 @@ pub async fn import_players(
         let created_at = now_iso();
         sqlx::query(
             r#"
-            INSERT INTO players (id, name, level, elo, arrival_time, matches_played, wins, losses, status, court_since, last_match_at, created_at, updated_at)
-            VALUES (?, ?, ?, 1000, ?, 0, 0, 0, 'waiting', '', '', ?, ?)
+            INSERT INTO players (
+                id, name, level, elo, arrival_time, waiting_since, queue_position,
+                matches_played, wins, losses, status, court_since, last_match_at, created_at, updated_at
+            )
+            VALUES (?, ?, ?, 1000, ?, ?, ?, 0, 0, 0, 'waiting', '', '', ?, ?)
             "#,
         )
         .bind(&id)
         .bind(&name)
         .bind(level)
         .bind(&arrival_time)
+        .bind(&arrival_time)
+        .bind(queue_position)
         .bind(&created_at)
         .bind(&created_at)
         .execute(&db.0)
         .await?;
 
+        queue_position += 1;
         added += 1;
     }
 

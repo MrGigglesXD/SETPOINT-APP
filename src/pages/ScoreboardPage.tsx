@@ -5,7 +5,7 @@ import { Card } from "@/components/ui/card";
 import { showToast } from "@/components/ui/toast";
 import { ScoreboardView } from "@/components/scoreboard/ScoreboardView";
 import { useScoreboardController } from "@/hooks/useScoreboardController";
-import { useMatchStore } from "@/stores/useMatchStore";
+//import { useMatchStore } from "@/stores/useMatchStore";
 import { formatDuration } from "@/types/match";
 
 export function ScoreboardPage({

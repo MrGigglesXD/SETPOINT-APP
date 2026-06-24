@@ -153,8 +153,8 @@ function PlayerCardSurface({
 }
 
 function formatWaiting(player: Player): string {
-  if (player.status !== "waiting" || !player.arrival_time) return "Ahora mismo";
-  const minutes = waitMinutes(player.arrival_time);
+  if (player.status !== "waiting") return "Ahora mismo";
+  const minutes = waitMinutes(player.waiting_since || player.arrival_time);
   if (minutes <= 0) return "Ahora mismo";
   if (minutes === 1) return "Hace 1 min";
   return `Hace ${minutes} min`;

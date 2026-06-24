@@ -57,7 +57,7 @@ export const usePlayersStore = create<PlayersState>((set, get) => ({
     set({ error: null });
     try {
       const player = await playersApi.create(payload);
-      set({ players: [...get().players, player].sort(byName) });
+      set({ players: [...get().players, player] });
     } catch (e) {
       set({ error: String(e) });
       throw e;
@@ -69,9 +69,7 @@ export const usePlayersStore = create<PlayersState>((set, get) => ({
     try {
       const updated = await playersApi.update(payload);
       set({
-        players: get()
-          .players.map((p) => (p.id === updated.id ? updated : p))
-          .sort(byName),
+        players: get().players.map((p) => (p.id === updated.id ? updated : p)),
       });
     } catch (e) {
       set({ error: String(e) });
@@ -107,7 +105,7 @@ export const usePlayersStore = create<PlayersState>((set, get) => ({
     set({ error: null });
     try {
       const player = await playersApi.duplicate(id);
-      set({ players: [...get().players, player].sort(byName) });
+      set({ players: [...get().players, player] });
       return player;
     } catch (e) {
       set({ error: String(e) });
@@ -169,10 +167,6 @@ export const usePlayersStore = create<PlayersState>((set, get) => ({
   },
 }));
 
-function byName(a: Player, b: Player): number {
-  return a.name.localeCompare(b.name);
-}
-
 // ════════════════════════════════════════════════════════
 // Selectors (derived state, kept outside the store for reuse)
 // ════════════════════════════════════════════════════════
@@ -223,13 +217,24 @@ export function selectAvailablePlayers(state: PlayersState): Player[] {
   return state.players.filter((p) => p.status === "available" || p.status === "waiting");
 }
 
+function compareQueueOrder(a: Player, b: Player): number {
+  const aPos = a.queue_position || Number.MAX_SAFE_INTEGER;
+  const bPos = b.queue_position || Number.MAX_SAFE_INTEGER;
+  if (aPos !== bPos) return aPos - bPos;
+
+  const aTime = a.waiting_since
+    ? new Date(a.waiting_since).getTime()
+    : a.arrival_time
+    ? new Date(a.arrival_time).getTime()
+    : Number.MAX_SAFE_INTEGER;
+  const bTime = b.waiting_since
+    ? new Date(b.waiting_since).getTime()
+    : b.arrival_time
+    ? new Date(b.arrival_time).getTime()
+    : Number.MAX_SAFE_INTEGER;
+  return aTime - bTime;
+}
+
 export function selectWaitingQueue(state: PlayersState): Player[] {
-  return state.players
-    .filter((p) => p.status === "waiting")
-    .sort((a, b) => {
-      const waitA = Date.now() - new Date(a.arrival_time).getTime();
-      const waitB = Date.now() - new Date(b.arrival_time).getTime();
-      if (waitA !== waitB) return waitB - waitA; // longest wait first
-      return a.matches_played - b.matches_played; // fewer matches first
-    });
+  return state.players.filter((p) => p.status === "waiting").sort(compareQueueOrder);
 }

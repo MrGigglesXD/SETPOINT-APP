@@ -16,7 +16,7 @@ impl<'a> QueueManager<'a> {
 
     pub async fn waiting_players(&self) -> AppResult<Vec<Player>> {
         Ok(sqlx::query_as(
-            "SELECT * FROM players WHERE status = 'waiting' AND arrival_time != '' ORDER BY arrival_time ASC",
+            "SELECT * FROM players WHERE status = 'waiting' ORDER BY queue_position ASC, waiting_since ASC, arrival_time ASC",
         )
         .fetch_all(self.pool)
         .await?)

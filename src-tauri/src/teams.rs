@@ -34,17 +34,38 @@ pub async fn sync_queue_after_teams(
             .fetch_all(pool)
             .await?;
 
-    for (id, _) in pool_players {
+    for (id, status) in pool_players {
         if team.contains(&id) {
             continue;
         }
-        sqlx::query(
-            "UPDATE players SET status = 'waiting', arrival_time = CASE WHEN arrival_time = '' THEN ?1 ELSE arrival_time END, updated_at = ?1 WHERE id = ?2",
-        )
-        .bind(&now)
-        .bind(&id)
-        .execute(pool)
-        .await?;
+
+        if status == "waiting" {
+            sqlx::query(
+                "UPDATE players SET status = 'waiting', updated_at = ?1 WHERE id = ?2",
+            )
+            .bind(&now)
+            .bind(&id)
+            .execute(pool)
+            .await?;
+        } else {
+            let queue_position = sqlx::query_scalar::<_, Option<i64>>("
+                SELECT MAX(queue_position) FROM players WHERE status = 'waiting'
+            ")
+            .fetch_one(pool)
+            .await?
+            .unwrap_or(0)
+            + 1;
+
+            sqlx::query(
+                "UPDATE players SET status = 'waiting', arrival_time = ?, waiting_since = ?, queue_position = ?, updated_at = ?1 WHERE id = ?2",
+            )
+            .bind(&now)
+            .bind(&now)
+            .bind(queue_position)
+            .bind(&id)
+            .execute(pool)
+            .await?;
+        }
     }
     Ok(())
 }
@@ -61,41 +82,71 @@ pub async fn set_team_assignments(
         .await?;
 
     for p in all {
-        let (status, court) = if blue_ids.contains(&p.id) {
-            (
-                "blue",
-                if stamp_court || p.court_since.is_empty() {
-                    now.clone()
-                } else {
-                    p.court_since.clone()
-                },
-            )
-        } else if red_ids.contains(&p.id) {
-            (
-                "red",
-                if stamp_court || p.court_since.is_empty() {
-                    now.clone()
-                } else {
-                    p.court_since.clone()
-                },
-            )
-        } else if p.status == "blue" || p.status == "red" {
-            if !p.arrival_time.is_empty() {
-                ("waiting", String::new())
+        if blue_ids.contains(&p.id) {
+            let court = if stamp_court || p.court_since.is_empty() {
+                now.clone()
             } else {
-                ("available", String::new())
-            }
-        } else {
+                p.court_since.clone()
+            };
+            sqlx::query("UPDATE players SET status = ?, court_since = ?, updated_at = ? WHERE id = ?")
+                .bind("blue")
+                .bind(&court)
+                .bind(&now)
+                .bind(&p.id)
+                .execute(pool)
+                .await?;
             continue;
-        };
+        }
 
-        sqlx::query("UPDATE players SET status = ?, court_since = ?, updated_at = ? WHERE id = ?")
-            .bind(status)
-            .bind(&court)
-            .bind(&now)
-            .bind(&p.id)
-            .execute(pool)
-            .await?;
+        if red_ids.contains(&p.id) {
+            let court = if stamp_court || p.court_since.is_empty() {
+                now.clone()
+            } else {
+                p.court_since.clone()
+            };
+            sqlx::query("UPDATE players SET status = ?, court_since = ?, updated_at = ? WHERE id = ?")
+                .bind("red")
+                .bind(&court)
+                .bind(&now)
+                .bind(&p.id)
+                .execute(pool)
+                .await?;
+            continue;
+        }
+
+        if p.status == "blue" || p.status == "red" {
+            if !p.arrival_time.is_empty() {
+                let queue_position = sqlx::query_scalar::<_, Option<i64>>("
+                    SELECT MAX(queue_position) FROM players WHERE status = 'waiting'
+                ")
+                .fetch_one(pool)
+                .await?
+                .unwrap_or(0)
+                + 1;
+
+                sqlx::query(
+                    "UPDATE players SET status = ?, arrival_time = ?, waiting_since = ?, queue_position = ?, court_since = '', updated_at = ? WHERE id = ?",
+                )
+                .bind("waiting")
+                .bind(&now)
+                .bind(&now)
+                .bind(queue_position)
+                .bind(&now)
+                .bind(&p.id)
+                .execute(pool)
+                .await?;
+            } else {
+                sqlx::query(
+                    "UPDATE players SET status = ?, court_since = '', updated_at = ? WHERE id = ?",
+                )
+                .bind("available")
+                .bind(&now)
+                .bind(&p.id)
+                .execute(pool)
+                .await?;
+            }
+            continue;
+        }
     }
 
     sync_queue_after_teams(pool, blue_ids, red_ids).await

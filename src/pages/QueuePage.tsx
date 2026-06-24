@@ -72,7 +72,7 @@ export function QueuePage() {
                   <div className="text-sm font-bold truncate">{p.name}</div>
                 </div>
                 <div className="text-[11px] text-muted leading-relaxed">
-                  Nivel {p.level} {levelStars(p.level)} · {waitMinutes(p.arrival_time)}m esperando ·{" "}
+                  Nivel {p.level} {levelStars(p.level)} · {waitMinutes(p.waiting_since || p.arrival_time)}m esperando ·{" "}
                   {statusLabel(p.status)}
                 </div>
               </div>

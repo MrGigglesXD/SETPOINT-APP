@@ -6,6 +6,7 @@ export interface QueuePlayer {
   name: string;
   level: number;
   arrival_time: string;
+  waiting_since: string;
   wait_minutes: number;
   matches_played: number;
   status: string;

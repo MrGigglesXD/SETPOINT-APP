@@ -5,13 +5,33 @@ interface PlayersSlice {
 }
 
 /** Jugadores en pool: disponibles o en cola, nunca en equipo. */
+function compareQueueOrder(a: Player, b: Player): number {
+  const aPos = a.queue_position || Number.MAX_SAFE_INTEGER;
+  const bPos = b.queue_position || Number.MAX_SAFE_INTEGER;
+  if (aPos !== bPos) return aPos - bPos;
+
+  const aTime = a.waiting_since
+    ? new Date(a.waiting_since).getTime()
+    : a.arrival_time
+    ? new Date(a.arrival_time).getTime()
+    : Number.MAX_SAFE_INTEGER;
+  const bTime = b.waiting_since
+    ? new Date(b.waiting_since).getTime()
+    : b.arrival_time
+    ? new Date(b.arrival_time).getTime()
+    : Number.MAX_SAFE_INTEGER;
+  return aTime - bTime;
+}
+
 export function selectPoolPlayers(state: PlayersSlice): Player[] {
   return state.players
     .filter((p) => p.status === "available" || p.status === "waiting")
     .sort((a, b) => {
-      const ta = a.arrival_time ? new Date(a.arrival_time).getTime() : Infinity;
-      const tb = b.arrival_time ? new Date(b.arrival_time).getTime() : Infinity;
-      return ta - tb;
+      if (a.status !== b.status) {
+        if (a.status === "waiting") return -1;
+        if (b.status === "waiting") return 1;
+      }
+      return compareQueueOrder(a, b);
     });
 }
 
@@ -25,8 +45,8 @@ export function selectRedTeam(state: PlayersSlice): Player[] {
 
 export function selectQueuePlayers(state: PlayersSlice): Player[] {
   return state.players
-    .filter((p) => p.status === "waiting" && !!p.arrival_time)
-    .sort((a, b) => new Date(a.arrival_time).getTime() - new Date(b.arrival_time).getTime());
+    .filter((p) => p.status === "waiting")
+    .sort(compareQueueOrder);
 }
 
 /**

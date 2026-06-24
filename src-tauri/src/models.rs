@@ -1,4 +1,4 @@
-use chrono::{DateTime, Utc};
+use chrono::Utc;
 use serde::{Deserialize, Serialize};
 use sqlx::FromRow;
 
@@ -10,6 +10,8 @@ pub struct Player {
     pub elo: i64,
     /// stored as RFC3339 string in SQLite, exposed as ISO string to frontend
     pub arrival_time: String,
+    pub waiting_since: String,
+    pub queue_position: i64,
     pub matches_played: i64,
     pub wins: i64,
     pub losses: i64,
@@ -49,10 +51,4 @@ pub struct DuplicatePlayerPayload {
 /// Returns current UTC time as RFC3339 string, used for arrival_time / timestamps.
 pub fn now_iso() -> String {
     Utc::now().to_rfc3339()
-}
-
-pub fn parse_iso(s: &str) -> Option<DateTime<Utc>> {
-    DateTime::parse_from_rfc3339(s)
-        .ok()
-        .map(|d| d.with_timezone(&Utc))
 }

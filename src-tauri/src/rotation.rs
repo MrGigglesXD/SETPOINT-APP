@@ -3,7 +3,7 @@ use sqlx::SqlitePool;
 
 use crate::engines::{NextMatchGenerator, RotationEngine};
 use crate::error::AppResult;
-use crate::models::{now_iso, parse_iso, Player};
+use crate::models::{now_iso, Player};
 use crate::teams::{set_team_assignments, BalancedTeamsResult};
 
 pub async fn apply_post_match_rotation(
@@ -23,34 +23,29 @@ pub async fn apply_post_match_rotation(
 
     let loser_players = fetch_ids(pool, &loser_ids).await?;
 
-    let existing_queue: Vec<Player> = sqlx::query_as(
-        "SELECT * FROM players WHERE status = 'waiting' AND arrival_time != '' ORDER BY arrival_time ASC",
-    )
-    .fetch_all(pool)
+    let max_position = sqlx::query_scalar::<_, Option<i64>>("
+        SELECT MAX(queue_position) FROM players WHERE status = 'waiting'
+    ")
+    .fetch_one(pool)
     .await?;
+    let mut queue_position = max_position.unwrap_or(0) + 1;
 
     let now = Utc::now();
-    let latest_queue_time = existing_queue
-        .iter()
-        .filter_map(|p| parse_iso(&p.arrival_time))
-        .max()
-        .unwrap_or(now);
-    let base = if latest_queue_time > now {
-        latest_queue_time
-    } else {
-        now
-    };
+    let base = now;
 
     for (i, lp) in loser_players.iter().enumerate() {
         let ts = (base + Duration::seconds(i as i64 + 1)).to_rfc3339();
         sqlx::query(
-            "UPDATE players SET status = 'waiting', arrival_time = ?, court_since = '', updated_at = ? WHERE id = ?",
+            "UPDATE players SET status = 'waiting', arrival_time = ?, waiting_since = ?, queue_position = ?, court_since = '', updated_at = ? WHERE id = ?",
         )
         .bind(&ts)
+        .bind(&ts)
+        .bind(queue_position)
         .bind(now_iso())
         .bind(&lp.id)
         .execute(pool)
         .await?;
+        queue_position += 1;
     }
 
     let fresh_queue = NextMatchGenerator::new(pool).candidates().await?;

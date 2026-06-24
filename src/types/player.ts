@@ -10,6 +10,8 @@ export interface Player {
   level: number;
   elo: number;
   arrival_time: string;
+  waiting_since: string;
+  queue_position: number;
   matches_played: number;
   wins: number;
   losses: number;
