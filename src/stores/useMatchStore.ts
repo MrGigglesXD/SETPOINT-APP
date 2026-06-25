@@ -142,7 +142,43 @@ export const useMatchStore = create<MatchState>((set, get) => ({
   async score(action) {
     set({ error: null });
     try {
+      const state = get();
+      const currentMatch = state.matchData;
       const resp = await matchApi.score(action);
+
+      if (resp.event?.type === "match_completed") {
+        const finalMatch = resp.match_data ?? currentMatch;
+        const winner = resp.event.winner === "blue" ? "blue" : "red";
+        set({
+          matchResult: finalMatch
+            ? {
+                winner,
+                loser: winner === "blue" ? "red" : "blue",
+                blue_score: finalMatch.blue_score,
+                red_score: finalMatch.red_score,
+                blue_sets: finalMatch.blue_sets,
+                red_sets: finalMatch.red_sets,
+                match_type: finalMatch.match_type,
+                duration_secs: finalMatch.started_at
+                  ? Math.max(0, Math.floor((Date.now() - new Date(finalMatch.started_at).getTime()) / 1000))
+                  : 0,
+                completed_sets: finalMatch.completed_sets,
+              }
+            : null,
+          replayTeams: currentMatch
+            ? {
+                blue: currentMatch.blue_player_ids,
+                red: currentMatch.red_player_ids,
+                format: {
+                  matchType: currentMatch.match_type,
+                  targetScore: currentMatch.target_score,
+                  teamSize: currentMatch.team_size,
+                },
+              }
+            : null,
+        });
+      }
+
       applyResponse(set, resp);
       return resp.event ?? null;
     } catch (e) {

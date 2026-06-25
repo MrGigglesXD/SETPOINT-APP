@@ -218,8 +218,8 @@ export function selectAvailablePlayers(state: PlayersState): Player[] {
 }
 
 function compareQueueOrder(a: Player, b: Player): number {
-  const aPos = a.queue_position || Number.MAX_SAFE_INTEGER;
-  const bPos = b.queue_position || Number.MAX_SAFE_INTEGER;
+  const aPos = a.queue_position != null ? a.queue_position : Number.MAX_SAFE_INTEGER;
+  const bPos = b.queue_position != null ? b.queue_position : Number.MAX_SAFE_INTEGER;
   if (aPos !== bPos) return aPos - bPos;
 
   const aTime = a.waiting_since

@@ -4,10 +4,10 @@ interface PlayersSlice {
   players: Player[];
 }
 
-/** Jugadores en pool: disponibles o en cola, nunca en equipo. */
+/** Jugadores en pool: solo cola, nunca en equipo. */
 function compareQueueOrder(a: Player, b: Player): number {
-  const aPos = a.queue_position || Number.MAX_SAFE_INTEGER;
-  const bPos = b.queue_position || Number.MAX_SAFE_INTEGER;
+  const aPos = a.queue_position != null ? a.queue_position : Number.MAX_SAFE_INTEGER;
+  const bPos = b.queue_position != null ? b.queue_position : Number.MAX_SAFE_INTEGER;
   if (aPos !== bPos) return aPos - bPos;
 
   const aTime = a.waiting_since
@@ -25,14 +25,8 @@ function compareQueueOrder(a: Player, b: Player): number {
 
 export function selectPoolPlayers(state: PlayersSlice): Player[] {
   return state.players
-    .filter((p) => p.status === "available" || p.status === "waiting")
-    .sort((a, b) => {
-      if (a.status !== b.status) {
-        if (a.status === "waiting") return -1;
-        if (b.status === "waiting") return 1;
-      }
-      return compareQueueOrder(a, b);
-    });
+    .filter((p) => p.status === "waiting")
+    .sort((a, b) => compareQueueOrder(a, b));
 }
 
 export function selectBlueTeam(state: PlayersSlice): Player[] {

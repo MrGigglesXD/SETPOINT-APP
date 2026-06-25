@@ -21,11 +21,6 @@ export default function App() {
     return () => window.removeEventListener("hashchange", onHashChange);
   }, []);
 
-  function openTvMode() {
-    window.location.hash = "marcador-solo";
-    setTvMode(true);
-  }
-
   function closeTvMode() {
     history.replaceState(null, "", window.location.pathname + window.location.search);
     setTvMode(false);
@@ -48,7 +43,6 @@ export default function App() {
         {tab === "match" && <MatchPage onGoScoreboard={() => setTab("scoreboard")} />}
         {tab === "scoreboard" && (
           <ScoreboardPage
-            onGoTv={openTvMode}
             onNoActive={() => setTab("match")}
             onGoMatch={() => setTab("match")}
             onGoHistory={() => setTab("history")}

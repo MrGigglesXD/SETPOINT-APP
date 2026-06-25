@@ -19,7 +19,6 @@ interface ScoreboardViewProps {
   onScore: (action: "blue_plus" | "blue_minus" | "red_plus" | "red_minus") => void;
   onUndo: () => void;
   onReset: () => void;
-  onFinish?: (winner: "blue" | "red") => void;
   minimal?: boolean;
   tick?: number;
 }
@@ -31,7 +30,6 @@ export function ScoreboardView({
   onScore,
   onUndo,
   onReset,
-  onFinish,
   minimal = false,
   tick = 0,
 }: ScoreboardViewProps) {
@@ -110,17 +108,6 @@ export function ScoreboardView({
           <RotateCcw size={18} /> Reset
         </Button>
       </div>
-
-      {!minimal && onFinish && (
-        <div className="grid grid-cols-2 gap-2">
-          <Button variant="blue" fullWidth onClick={() => onFinish("blue")}>
-            Ganador Azul
-          </Button>
-          <Button variant="red" fullWidth onClick={() => onFinish("red")}>
-            Ganador Rojo
-          </Button>
-        </div>
-      )}
     </div>
   );
 }

@@ -1,5 +1,5 @@
 import { useEffect } from "react";
-import { Monitor, Play, History, Home, RotateCw } from "lucide-react";
+import { Play, History, Home, RotateCw } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { showToast } from "@/components/ui/toast";
@@ -9,12 +9,10 @@ import { useScoreboardController } from "@/hooks/useScoreboardController";
 import { formatDuration } from "@/types/match";
 
 export function ScoreboardPage({
-  onGoTv,
   onNoActive,
   onGoMatch,
   onGoHistory,
 }: {
-  onGoTv?: () => void;
   onNoActive?: () => void;
   onGoMatch?: () => void;
   onGoHistory?: () => void;
@@ -36,7 +34,6 @@ export function ScoreboardPage({
     score,
     undo,
     reset,
-    finish,
     generateOpponent,
     rematch,
     clearError,
@@ -69,15 +66,17 @@ export function ScoreboardPage({
     if (lastEvent.type === "set_completed") {
       const t = lastEvent.winner === "blue" ? "Azul" : "Rojo";
       showToast(`Set ${lastEvent.set_number}: ${lastEvent.blue_score}-${lastEvent.red_score} · ${t}`);
-    } else {
+    } else if (lastEvent.type === "match_completed") {
+      // match_completed: matchResult is automatically set by the store
+      // Just show confirmation and sync data in background
       const t = lastEvent.winner === "blue" ? "Azul" : "Rojo";
       showToast(`✓ Gana ${t}`);
-      loadPlayers();
-      loadActive();
-      loadHistory();
+      // Background sync (don't await, let UI update immediately)
+      loadPlayers().catch(() => {/* silent */});
+      loadHistory().catch(() => {/* silent */});
     }
     clearLastEvent();
-  }, [lastEvent, loadPlayers, loadActive, loadHistory, clearLastEvent]);
+  }, [lastEvent, loadPlayers, loadHistory, clearLastEvent]);
 
 // Do not auto-navigate away when there's no active match.
 // Show a clear message and offer a button to go to the Match screen instead.
@@ -153,31 +152,22 @@ export function ScoreboardPage({
         </Card>
 
         <div className="grid grid-cols-2 gap-2">
-          <div className="grid grid-cols-1 gap-2">
-            <Button variant="yellow" fullWidth onClick={handleNextMatch} disabled={loading}>
-              <RotateCw size={16} /> Generar siguiente partido
-            </Button>
-            <Button variant="ghost" fullWidth onClick={handleRematch} disabled={!replayTeams || loading}>
-              Revancha
-            </Button>
-          </div>
-          <Button 
-            variant="ghost"
-            onClick={() => {
-              clearResult();
-              onGoMatch?.();
-            }}
-          >
-            ✏ Editar
+          <Button variant="yellow" fullWidth onClick={handleNextMatch} disabled={loading}>
+            <RotateCw size={16} /> Generar siguiente partido
+          </Button>
+          <Button variant="ghost" fullWidth onClick={handleRematch} disabled={!replayTeams || loading}>
+            Revancha
           </Button>
           <Button 
             variant="ghost"
+            fullWidth
             onClick={onGoHistory}
           >
             <History size={16} /> Historial
           </Button>
           <Button 
             variant="ghost"
+            fullWidth
             onClick={() => {
               clearResult();
               onNoActive?.();
@@ -214,13 +204,6 @@ export function ScoreboardPage({
         <Button variant="yellow" fullWidth onClick={handleStart}>
           <Play size={18} /> Abrir marcador
         </Button>
-        <Button
-          variant="ghost"
-          fullWidth
-          onClick={onGoTv}
-        >
-          <Monitor size={18} /> Modo Solo Marcador (TV)
-        </Button>
       </div>
     );
   }
@@ -231,13 +214,6 @@ export function ScoreboardPage({
         <h1 className="text-xl font-extrabold">
           📺 <span className="text-setpoint-yellow">Marcador</span>
         </h1>
-        <Button
-          variant="ghost"
-          size="sm"
-          onClick={onGoTv}
-        >
-          <Monitor size={14} /> TV
-        </Button>
       </div>
       <ScoreboardView
         match={matchData}
@@ -246,7 +222,6 @@ export function ScoreboardPage({
         onScore={(a) => score(a)}
         onUndo={() => undo()}
         onReset={() => reset()}
-        onFinish={(w) => finish(w)}
         tick={tick}
       />
     </div>

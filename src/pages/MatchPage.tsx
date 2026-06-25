@@ -33,9 +33,10 @@ export function MatchPage({ onGoScoreboard }: { onGoScoreboard?: () => void }) {
   const [showCancel, setShowCancel] = useState(false);
 
   const format: MatchFormatConfig = { matchType, targetScore, teamSize };
-  const pool = selectPoolPlayers({ players });
   const blueTeam = selectBlueTeam({ players });
   const redTeam = selectRedTeam({ players });
+  const assignedIds = new Set([...blueTeam, ...redTeam].map((p) => p.id));
+  const pool = selectPoolPlayers({ players }).filter((p) => !assignedIds.has(p.id));
   const isSetup = matchData?.phase === "setup";
 
   useEffect(() => {
@@ -216,7 +217,13 @@ export function MatchPage({ onGoScoreboard }: { onGoScoreboard?: () => void }) {
         <Button variant="yellow" fullWidth onClick={handleGenerate}>
           <Shuffle size={18} /> Generar Equipos Balanceados
         </Button>
-        <Button variant="ghost" fullWidth onClick={handleGenerateOpponent} disabled={!matchData}>
+        <Button 
+          variant="ghost" 
+          fullWidth 
+          onClick={handleGenerateOpponent} 
+          disabled={!matchData || matchType !== "exhibition"}
+          title={matchType !== "exhibition" ? "Solo disponible en exhibición" : ""}
+        >
           <Swords size={18} /> Generar Equipo Contrincante
         </Button>
       </div>
