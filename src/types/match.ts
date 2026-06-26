@@ -6,7 +6,7 @@ import type { Player } from "@/types/player";
 
 export type MatchPhase = "setup" | "live";
 export type MatchType = "exhibition" | "best_of_3" | "best_of_5";
-export type TargetScore = 15 | 21 | 25;
+export type TargetScore = 16 | 21 | 25;
 export type TeamSize = 4 | 6;
 
 export interface SetScore {

@@ -147,7 +147,7 @@ export const useMatchStore = create<MatchState>((set, get) => ({
       const resp = await matchApi.score(action);
 
       if (resp.event?.type === "match_completed") {
-        const finalMatch = resp.match_data ?? currentMatch;
+        const finalMatch = currentMatch ?? resp.match_data;
         const winner = resp.event.winner === "blue" ? "blue" : "red";
         set({
           matchResult: finalMatch

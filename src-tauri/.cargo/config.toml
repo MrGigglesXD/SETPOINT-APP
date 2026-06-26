@@ -1,0 +1,6 @@
+[target.armv7-linux-androideabi]
+linker = "/Users/macstudiodpa07/Library/Android/sdk/ndk/29.0.13846066/toolchains/llvm/prebuilt/darwin-x86_64/bin/armv7a-linux-androideabi24-clang"
+ar = "/Users/macstudiodpa07/Library/Android/sdk/ndk/29.0.13846066/toolchains/llvm/prebuilt/darwin-x86_64/bin/llvm-ar"
+
+[build]
+target = "armv7-linux-androideabi"

@@ -1,7 +1,7 @@
 import type { MatchType, TargetScore, TeamSize } from "@/types/match";
 import { Card } from "@/components/ui/card";
 
-const TARGET_OPTIONS: TargetScore[] = [15, 21, 25];
+const TARGET_OPTIONS: TargetScore[] = [16, 21, 25];
 
 export function FormatSelector({
   matchType,

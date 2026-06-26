@@ -11,6 +11,7 @@ export function TeamPanel({
   pool,
   teamSize,
   onAssign,
+  balance,
 }: {
   team: "blue" | "red";
   label: string;
@@ -18,6 +19,7 @@ export function TeamPanel({
   pool: Player[];
   teamSize: number;
   onAssign: (id: string, side: "blue" | "red" | "none") => void;
+  balance: string;
 }) {
   const border = team === "blue" ? "border-setpoint-blue/40" : "border-setpoint-red/40";
   const header = team === "blue" ? "text-setpoint-blue-text" : "text-setpoint-red-text";
@@ -25,18 +27,33 @@ export function TeamPanel({
   const available = pool.filter((p) => !teamIds.has(p.id));
   const teamFull = players.length >= teamSize;
   
-  const avgLevel = players.length > 0 
-    ? (players.reduce((sum, p) => sum + p.level, 0) / players.length).toFixed(1)
+  const avgLevel = players.length > 0
+    ? Number((players.reduce((sum, p) => sum + p.level, 0) / players.length).toFixed(1))
     : null;
 
   return (
     <Card className={`border-2 ${border} flex flex-col gap-2.5`}>
       <div className="flex items-center justify-between">
-        <div className={`text-sm font-bold ${header}`}>
-          {label}
-          {avgLevel && <span className="text-muted ml-1 text-xs">· {avgLevel}</span>}
-        </div>
+        <div className={`text-sm font-bold ${header}`}>{label}</div>
         <Pill variant={team}>{players.length}</Pill>
+      </div>
+
+      <div className="rounded-2xl bg-card3 p-3 text-white">
+        <div className="flex items-center gap-2 text-sm font-semibold text-muted">
+          <span>⭐</span>
+          <span>Nivel promedio:</span>
+          <span className="text-setpoint-yellow">{avgLevel !== null ? avgLevel.toFixed(1) : "—"}</span>
+        </div>
+        <div className="mt-2 flex items-center gap-2 text-sm font-semibold text-muted">
+          <span>👥</span>
+          <span>Jugadores:</span>
+          <span className="text-setpoint-yellow">{players.length}</span>
+        </div>
+        <div className="mt-2 flex items-center gap-2 text-sm font-semibold text-muted">
+          <span>⚖️</span>
+          <span>Balance:</span>
+          <span className="text-setpoint-yellow">{balance}</span>
+        </div>
       </div>
 
       {players.length > 0 && (

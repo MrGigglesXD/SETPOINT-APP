@@ -18,11 +18,7 @@ pub fn run() {
         .plugin(tauri_plugin_fs::init())
         .plugin(tauri_plugin_dialog::init())
         .setup(|app| {
-            if let (Some(window), Some(icon)) =
-                (app.get_webview_window("main"), app.default_window_icon())
-            {
-                window.set_icon(icon.clone())?;
-            }
+            // Skip setting the webview icon here to avoid unavailable API on some targets.
             let app_handle = app.handle().clone();
 
             // Resolve app data dir (platform-appropriate: ~/Library/Application Support/... on macOS,

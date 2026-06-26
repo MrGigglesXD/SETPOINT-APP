@@ -45,28 +45,6 @@ export interface ImportResult {
   skipped_names: string[];
 }
 
-export interface BackupCounts {
-  players: number;
-  levels: number;
-  matches: number;
-  statistics: number;
-  settings: number;
-}
-
-export interface SetpointBackup {
-  format: "setpoint-backup";
-  version: 1;
-  exported_at: string;
-  counts: BackupCounts;
-  players: Player[];
-  matches: unknown[];
-  match_players: unknown[];
-  statistics: unknown[];
-  settings: unknown[];
-}
-
-export type BackupImportMode = "replace" | "merge";
-export type BackupImportResult = Omit<BackupCounts, "levels">;
 
 // ════════════════════════════════════════════════════════
 // Derived / computed helpers used across the UI

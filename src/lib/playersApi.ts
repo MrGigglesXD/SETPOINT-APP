@@ -6,9 +6,6 @@ import type {
   ImportPlayerRow,
   ImportResult,
   PlayerStatus,
-  SetpointBackup,
-  BackupImportMode,
-  BackupImportResult,
 } from "@/types/player";
 import { parseImportText as parseImportTextSanitized } from "@/lib/playerImportSanitizer";
 
@@ -63,14 +60,6 @@ export const playersApi = {
 
   import(rows: ImportPlayerRow[]): Promise<ImportResult> {
     return invoke<ImportResult>("import_players", { rows });
-  },
-
-  exportBackup(): Promise<SetpointBackup> {
-    return invoke<SetpointBackup>("export_backup");
-  },
-
-  importBackup(backup: SetpointBackup, mode: BackupImportMode): Promise<BackupImportResult> {
-    return invoke<BackupImportResult>("import_backup", { backup, mode });
   },
 };
 

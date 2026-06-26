@@ -39,6 +39,30 @@ export function MatchPage({ onGoScoreboard }: { onGoScoreboard?: () => void }) {
   const pool = selectPoolPlayers({ players }).filter((p) => !assignedIds.has(p.id));
   const isSetup = matchData?.phase === "setup";
 
+  const teamAverageLevel = (teamPlayers: typeof blueTeam) =>
+    teamPlayers.length
+      ? Number(
+          (
+            teamPlayers.reduce((sum, player) => sum + player.level, 0) /
+            teamPlayers.length
+          ).toFixed(1)
+        )
+      : null;
+
+  const blueAverage = teamAverageLevel(blueTeam);
+  const redAverage = teamAverageLevel(redTeam);
+
+  const balanceLabel =
+    blueAverage !== null && redAverage !== null
+      ? blueAverage === redAverage
+        ? "Perfecto"
+        : Math.abs(blueAverage - redAverage) <= 0.2
+        ? "Excelente"
+        : Math.abs(blueAverage - redAverage) <= 0.5
+        ? "Bueno"
+        : "Regular"
+      : "Por definir";
+
   useEffect(() => {
     loadActive();
     loadPlayers();
@@ -228,8 +252,24 @@ export function MatchPage({ onGoScoreboard }: { onGoScoreboard?: () => void }) {
         </Button>
       </div>
 
-      <TeamPanel team="blue" label="Equipo Azul" players={blueTeam} pool={pool} teamSize={teamSize} onAssign={handleAssign} />
-      <TeamPanel team="red" label="Equipo Rojo" players={redTeam} pool={pool} teamSize={teamSize} onAssign={handleAssign} />
+      <TeamPanel
+        team="blue"
+        label="Equipo Azul"
+        players={blueTeam}
+        pool={pool}
+        teamSize={teamSize}
+        onAssign={handleAssign}
+        balance={balanceLabel}
+      />
+      <TeamPanel
+        team="red"
+        label="Equipo Rojo"
+        players={redTeam}
+        pool={pool}
+        teamSize={teamSize}
+        onAssign={handleAssign}
+        balance={balanceLabel}
+      />
 
       <div className="text-xs text-muted text-center">
         Pool: {pool.length} jugador{pool.length === 1 ? "" : "es"} disponibles
